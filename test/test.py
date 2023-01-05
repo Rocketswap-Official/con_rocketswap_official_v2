@@ -62,14 +62,14 @@ class MyTestCase(unittest.TestCase):
         self.c.flush()
 
     def test_01_swapping_token_for_token_should_pass(self):
-        marvin_initial_balance_rswp = self.rswp.balances['benji']
-        marvin_final_balance_marmite = self.marmite.balances['benji'] - 1_000_000
+        benji_initial_balance_rswp = self.rswp.balances['benji']
+        benji_final_balance_marmite = self.marmite.balances['benji'] - 1_000_000
         
-        self.dex.swap_token_for_token(signer='benji', contract_a='con_marmite100_contract', amount_a=1_000_000, 
+        self.dex.swap_tokens_through_tau(signer='benji', contract_a='con_marmite100_contract', amount_a=1_000_000, 
         contract_b='con_rswp_lst001', minimum_received=0, token_fees=False)
 
-        self.assertEqual(self.marmite.balances['benji'], marvin_final_balance_marmite)
-        self.assertGreater(self.rswp.balances['benji'], marvin_initial_balance_rswp)
+        self.assertEqual(self.marmite.balances['benji'], benji_final_balance_marmite)
+        self.assertGreater(self.rswp.balances['benji'], benji_initial_balance_rswp)
     
 if __name__ == "__main__":
     unittest.main()
