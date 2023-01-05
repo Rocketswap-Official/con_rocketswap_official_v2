@@ -22,10 +22,24 @@ def init():
     state['MULTIPLIER'] = decimal('0.07')
     state['DISCOUNT_FLOOR'] = decimal('0.505')
     state['OWNER'] = ctx.caller
+
+#TODO: method for handling token-token swap
     
 @export
 def create_market(contract: str, currency_amount: float=0, token_amount:
     float=0):
+    '''
+     OVERVIEW: Add the feature to create any token-token pool
+     CHECKS:
+        * two same tokens (eg. rswp-rswp pool) should not 
+          exist
+     CHANGES:
+        * pairs[token_a, token_b]
+        * prices[token_a, token_b]
+        * lp_points[token_a, token_b, ctx.caller] 
+        * lp_points[token_a, token_b] 
+        * reserves[token_a, token_b]
+    '''
     assert pairs[contract] is None, 'Market already exists!'
     assert currency_amount > 0 and token_amount > 0, 'Must provide currency amount and token amount!'
     token = I.import_module(contract)
@@ -44,10 +58,23 @@ def create_market(contract: str, currency_amount: float=0, token_amount:
     
 @export
 def liquidity_balance_of(contract: str, account: str):
+    '''
+    CHANGES:
+        * lp_points[token_a, token_b, account] 
+    '''
     return lp_points[contract, account]
     
 @export
 def add_liquidity(contract: str, currency_amount: float=0):
+    '''
+     OVERVIEW: Add the feature to add liquidity to any token-token pool
+     CHANGES:
+        * pairs[token_a, token_b]
+        * prices[token_a, token_b]
+        * lp_points[token_a, token_b, ctx.caller] 
+        * lp_points[token_a, token_b] 
+        * reserves[token_a, token_b]
+    '''
     assert pairs[contract] is True, 'Market does not exist!'
     assert currency_amount > 0
     token = I.import_module(contract)
@@ -70,6 +97,15 @@ def add_liquidity(contract: str, currency_amount: float=0):
     
 @export
 def remove_liquidity(contract: str, amount: float=0):
+    '''
+     OVERVIEW: Add the feature to remove liquidity from any token-token pool
+     CHANGES:
+        * pairs[token_a, token_b]
+        * prices[token_a, token_b]
+        * lp_points[token_a, token_b, ctx.caller] 
+        * lp_points[token_a, token_b] 
+        * reserves[token_a, token_b]
+    '''
     assert pairs[contract] is True, 'Market does not exist!'
     assert amount > 0, 'Must be a positive LP point amount!'
     assert lp_points[contract, ctx.caller
@@ -94,6 +130,11 @@ def remove_liquidity(contract: str, amount: float=0):
     
 @export
 def transfer_liquidity(contract: str, to: str, amount: float):
+    '''
+     CHANGES:
+        * lp_points[token_a, token_b, ctx.caller] 
+        * lp_points[token_a, token_b] 
+    '''
     assert amount > 0, 'Must be a positive LP point amount!'
     assert lp_points[contract, ctx.caller
         ] >= amount, 'Not enough LP points to transfer!'
@@ -102,12 +143,23 @@ def transfer_liquidity(contract: str, to: str, amount: float):
     
 @export
 def approve_liquidity(contract: str, to: str, amount: float):
+    '''
+     CHANGES:
+        * lp_points[token_a, token_b, ctx.caller, to] 
+        
+    '''
     assert amount > 0, 'Cannot send negative balances!'
     lp_points[contract, ctx.caller, to] += amount
     
 @export
 def transfer_liquidity_from(contract: str, to: str, main_account: str,
     amount: float):
+    '''
+     CHANGES: 
+        * lp_points[token_a, token_b]
+        * lp_points[token_a, token_b, ctx.caller] 
+        * lp_points[token_a, token_b, ctx.caller, to]  
+    '''
     assert amount > 0, 'Cannot send negative balances!'
     assert lp_points[contract, main_account, ctx.caller
         ] >= amount, 'Not enough coins approved to send! You have {} and are trying to spend {}'.format(
@@ -119,7 +171,7 @@ def transfer_liquidity_from(contract: str, to: str, main_account: str,
     lp_points[contract, to] += amount
 
 @export
-def swap_token_for_token(contract_a: str, amount_a: float, contract_b: str, 
+def swap_tokens_through_tau(contract_a: str, amount_a: float, contract_b: str, 
     minimum_received: float=0, token_fees: bool=False):
     #sell token_a for TAU
     currency_purchased = sell(contract=contract_a, token_amount=amount_a, 
@@ -131,6 +183,12 @@ def swap_token_for_token(contract_a: str, amount_a: float, contract_b: str,
 @export
 def buy(contract: str, currency_amount: float, minimum_received: float=0,
     token_fees: bool=False):
+    '''
+     CHANGES:
+        * pairs[token, "currency"]
+        * prices[token, "currency"] 
+        * reserves[token, "currency"]
+    '''
     assert pairs[contract] is True, 'Market does not exist'
     assert currency_amount > 0, 'Must provide currency amount!'
     token = I.import_module(contract)
@@ -202,6 +260,12 @@ def buy(contract: str, currency_amount: float, minimum_received: float=0,
 @export
 def sell(contract: str, token_amount: float, minimum_received: float=0,
     token_fees: bool=False):
+    '''
+     CHANGES:
+        * pairs[token, "currency"]
+        * prices[token, "currency"] 
+        * reserves[token, "currency"]
+    '''
     assert pairs[contract] is True, 'Market does not exist!'
     assert token_amount > 0, 'Must provide currency amount and token amount!'
     token = I.import_module(contract)
@@ -318,6 +382,12 @@ def sync_reserves(contract: str):
     return new_balance
     
 def internal_buy(contract: str, currency_amount: float):
+    '''
+     CHANGES:
+        * pairs[token, "currency"]
+        * prices[token, "currency"] 
+        * reserves[token, "currency"]
+    '''
     assert pairs[contract] is True, 'RSWP Market does not exist!'
     if currency_amount <= 0:
         return 0
@@ -338,6 +408,12 @@ def internal_buy(contract: str, currency_amount: float):
     return tokens_purchased
     
 def internal_sell(contract: str, token_amount: float):
+    '''
+     CHANGES:
+        * pairs[token, "currency"]
+        * prices[token, "currency"] 
+        * reserves[token, "currency"]
+    '''
     assert pairs[contract] is True, 'RSWP Market does not exist!'
     if token_amount <= 0:
         return 0
