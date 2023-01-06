@@ -26,8 +26,8 @@ def init():
 #TODO: method for handling token-token swap
     
 @export
-def create_market(contract: str, currency_amount: float=0, token_amount:
-    float=0):
+def create_market(token_a: str, token_b: str, 
+    token_amount_a: float=0,  token_amount_b: float=0):
     '''
      OVERVIEW: Add the feature to create any token-token pool
      CHECKS:
@@ -40,20 +40,26 @@ def create_market(contract: str, currency_amount: float=0, token_amount:
         * lp_points[token_a, token_b] 
         * reserves[token_a, token_b]
     '''
-    assert pairs[contract] is None, 'Market already exists!'
-    assert currency_amount > 0 and token_amount > 0, 'Must provide currency amount and token amount!'
-    token = I.import_module(contract)
-    assert I.enforce_interface(token, token_interface
-        ), 'Invalid token interface!'
-    currency.transfer_from(amount=currency_amount, to=ctx.this,
+    assert token_a != token_b, 'Token contracts are the same!'
+    #check if the inverse pair already exist (B/A)
+    assert pairs[token_b, token_a] is None, f'{token_b}/{token_a} market exists!'
+    assert pairs[token_a, token_b] is None, 'Market already exists!'
+    assert token_amount_a > 0 and token_amount_b > 0, f'Must provide {token_a} amount and {token_b} amount!'
+    contract_a = I.import_module(token_a)
+    contract_b = I.import_module(token_b)
+    assert I.enforce_interface(contract_a, token_interface
+        ), f'{token_a} has invalid token interface!'
+    assert I.enforce_interface(contract_b, token_interface
+        ), f'{token_b} has invalid token interface!'
+    contract_a.transfer_from(amount=token_amount_a, to=ctx.this,
         main_account=ctx.caller)
-    token.transfer_from(amount=token_amount, to=ctx.this, main_account=ctx.
-        caller)
-    prices[contract] = currency_amount / token_amount
-    pairs[contract] = True
-    lp_points[contract, ctx.caller] = 100
-    lp_points[contract] = 100
-    reserves[contract] = [currency_amount, token_amount]
+    contract_b.transfer_from(amount=token_amount_b, to=ctx.this, 
+        main_account=ctx.caller)
+    prices[token_a, token_b] = token_amount_b / token_amount_a
+    pairs[token_a, token_b] = True
+    lp_points[token_a, token_b, ctx.caller] = 100
+    lp_points[token_a, token_b] = 100
+    reserves[token_a, token_b] = [token_amount_b, token_amount_a]
     return True
     
 @export
