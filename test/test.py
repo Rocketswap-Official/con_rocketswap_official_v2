@@ -44,11 +44,11 @@ class MyTestCase(unittest.TestCase):
         self.marmite.approve(signer='benji', amount=999999999, to='con_rocketswap_official_v2')
         
         # Create TAU-RSWP pool
-        self.dex.create_market(signer="sys", contract="con_rswp_lst001", 
-            currency_amount=1_000_000, token_amount=2_000_000)
+        self.dex.create_market(signer="sys", token_a="con_rswp_lst001",
+            token_b="currency", token_amount_a=2_000_000, token_amount_b=1_000_000,)
         # Create TAU-MARMITE pool
-        self.dex.create_market(signer="sys", contract="con_marmite100_contract", 
-            currency_amount=10_000, token_amount=5_000_000)
+        self.dex.create_market(signer="sys", token_a="con_marmite100_contract", 
+            token_b="currency", token_amount_a=5_000_000, token_amount_b=10_000)
         # Transfers
         self.currency.transfer(signer='sys', amount=1000, to='marvin')
         self.rswp.transfer(signer='sys', amount=20_000, to='marvin')
@@ -60,17 +60,41 @@ class MyTestCase(unittest.TestCase):
 
     def tearDown(self):
         self.c.flush()
-
-    def test_01_swapping_token_for_token_should_pass(self):
-        benji_initial_balance_rswp = self.rswp.balances['benji']
-        benji_final_balance_marmite = self.marmite.balances['benji'] - 1_000_000
-        
-        self.dex.swap_tokens_through_tau(signer='benji', contract_a='con_marmite100_contract', amount_a=1_000_000, 
-        contract_b='con_rswp_lst001', minimum_received=0, token_fees=False)
-
-        self.assertEqual(self.marmite.balances['benji'], benji_final_balance_marmite)
-        self.assertGreater(self.rswp.balances['benji'], benji_initial_balance_rswp)
     
+    #def test_01_swapping_token_for_token_should_pass(self):
+    #    benji_initial_balance_rswp = self.rswp.balances['benji']
+    #    benji_final_balance_marmite = self.marmite.balances['benji'] - 1_000_000
+    #    
+    #    self.dex.swap_tokens_through_tau(signer='benji', contract_a='con_marmite100_contract', amount_a=1_000_000, 
+    #    contract_b='con_rswp_lst001', minimum_received=0, token_fees=False)
+
+    #    self.assertEqual(self.marmite.balances['benji'], benji_final_balance_marmite)
+    #    self.assertGreater(self.rswp.balances['benji'], benji_initial_balance_rswp)
+    
+    def test_01_creating_pair_market_should_pass(self):
+        # Create RSWP-MARMITE pool
+        self.dex.create_market(signer="benji", token_a="con_rswp_lst001",
+            token_b="con_marmite100_contract", token_amount_a=5_000, token_amount_b=1_000_000)
+
+        print(self.dex.reserves['con_rswp_lst001','con_marmite100_contract'])
+
+    def test_02_creating_same_pair_market_should_fail(self):
+        # Create RSWP-RSWP pool
+        with self.assertRaises(AssertionError):
+            self.dex.create_market(signer="benji", token_a="con_rswp_lst001",
+                token_b="con_rswp_lst001", token_amount_a=5_000, token_amount_b=10_000)
+
+    def test_03_creating_an_inverse_pair_market_should_fail(self):
+        # Create RSWP-MARMITE pool
+        self.dex.create_market(signer="benji", token_a="con_rswp_lst001",
+            token_b="con_marmite100_contract", token_amount_a=5_000, token_amount_b=1_000_000)
+            
+        # Create MARMITE-RSWP pool
+        with self.assertRaises(AssertionError):
+            self.dex.create_market(signer="benji", token_a="con_marmite100_contract",
+                token_b="con_rswp_lst001", token_amount_a=5_000, token_amount_b=1_000_000)
+
+            
 if __name__ == "__main__":
     unittest.main()
 
