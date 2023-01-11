@@ -45,6 +45,11 @@ def create_market(token_a: str, token_b: str,
     assert pairs[token_b, token_a] is None, f'{token_b}/{token_a} market exists!'
     assert pairs[token_a, token_b] is None, 'Market already exists!'
     assert token_amount_a > 0 and token_amount_b > 0, f'Must provide {token_a} amount and {token_b} amount!'
+    #ensure consistent currency(TAU)-token pool creation
+    #regardless of order of tokens naming eg: TAU-RSWP, TAU-SPANGE
+    if token_a == 'currency':
+        token_a, token_b = token_b, token_a
+        
     contract_a = I.import_module(token_a)
     contract_b = I.import_module(token_b)
     assert I.enforce_interface(contract_a, token_interface
@@ -63,12 +68,12 @@ def create_market(token_a: str, token_b: str,
     return True
     
 @export
-def liquidity_balance_of(contract: str, account: str):
+def liquidity_balance_of(token_a: str, token_b: str, account: str):
     '''
     CHANGES:
         * lp_points[token_a, token_b, account] 
     '''
-    return lp_points[contract, account]
+    return lp_points[token_a, token_b, account]
     
 @export
 def add_liquidity(contract: str, currency_amount: float=0):
@@ -177,14 +182,105 @@ def transfer_liquidity_from(contract: str, to: str, main_account: str,
     lp_points[contract, to] += amount
 
 @export
-def swap_tokens_through_tau(contract_a: str, amount_a: float, contract_b: str, 
-    minimum_received: float=0, token_fees: bool=False):
-    #sell token_a for TAU
-    currency_purchased = sell(contract=contract_a, token_amount=amount_a, 
-        minimum_received=minimum_received, token_fees=token_fees)
-    #buy token_b with TAU
-    buy(contract=contract_b, currency_amount=currency_purchased, 
-        minimum_received=minimum_received, token_fees=token_fees)
+def swap_tau_to_token(token_contract: str, currency_amount: float):
+    assert pairs[token_contract, 'currency'] is True, 'Market does not exist'
+    assert currency_amount > 0, 'Must provide token amount!'
+    token = I.import_module(token_contract)
+    assert I.enforce_interface(token, token_interface
+        ), 'Invalid token interface!'
+    
+    fee  = currency_amount * state['FEE_PERCENTAGE']
+    currency_reserve, token_reserve = reserves[token_contract, 'currency']
+    k = currency_reserve * token_reserve
+    new_currency_reserve = currency_reserve + currency_amount
+    new_token_reserve = k / (new_currency_reserve - fee)
+    tokens_out = token_reserve - new_token_reserve
+    #TAU and token transfers
+    currency.transfer_from(amount=currency_amount, to=ctx.this,
+            main_account=ctx.caller)
+    token.transfer(amount=tokens_out, to=ctx.caller)
+    # update reserves
+    reserves[token_contract, 'currency'] = [new_currency_reserve+fee, new_token_reserve]
+    # set price
+    prices[token_contract, 'currency'] = new_currency_reserve+fee / new_token_reserve
+    return tokens_out
+
+@export
+def swap_token_to_tau(token_contract: str, token_amount: float):
+    assert pairs[token_contract, 'currency'] is True, 'Market does not exist'
+    assert token_amount > 0, 'Must provide token amount!'
+    token = I.import_module(token_contract)
+    assert I.enforce_interface(token, token_interface
+        ), 'Invalid token interface!'
+    
+    fee  = token_amount * state['FEE_PERCENTAGE']
+    currency_reserve, token_reserve = reserves[token_contract, 'currency']
+    k = currency_reserve * token_reserve
+    new_token_reserve = token_reserve + token_amount
+    new_currency_reserve = k / (new_token_reserve - fee)
+    currency_out = currency_reserve - new_currency_reserve
+    #TAU and token transfers
+    token.transfer_from(amount=token_amount, to=ctx.this,
+            main_account=ctx.caller)
+    currency.transfer(amount=currency_out, to=ctx.caller)
+    # update reserves
+    reserves[token_contract, 'currency'] = [new_currency_reserve, new_token_reserve+fee]
+    # set price
+    prices[token_contract, 'currency'] = new_currency_reserve / new_token_reserve+fee
+    return currency_out
+
+@export
+def swap_token_to_token(token_contract_a: str, token_contract_b: str, token_amount_a: float):
+    assert token_amount_a > 0, 'Must provide token amount!'
+    token_a = I.import_module(token_contract_a)
+    token_b = I.import_module(token_contract_b)
+    
+    assert I.enforce_interface(token_a, token_interface
+        ), 'Invalid token interface!'
+    assert I.enforce_interface(token_b, token_interface
+        ), 'Invalid token interface!'
+        
+    fee  = token_amount_a * state['FEE_PERCENTAGE']
+        
+    if pairs[token_contract_a, token_contract_b]:
+        token_reserve_b, token_reserve_a = reserves[token_contract_a, token_contract_b]
+        k = token_reserve_b * token_reserve_a
+        new_token_reserve_a = token_reserve_a + token_amount_a
+        new_token_reserve_b = k / (new_token_reserve_a - fee)
+        token_b_out = token_reserve_b - new_token_reserve_b
+        #token_a and token_b transfers
+        token_a.transfer_from(amount=token_amount_a, to=ctx.this,
+                main_account=ctx.caller)
+        token_b.transfer(amount=token_b_out, to=ctx.caller)
+        # update reserves
+        reserves[token_contract_a, token_contract_b] = [new_token_reserve_b, new_token_reserve_a+fee]
+        # set price
+        prices[token_contract_a, token_contract_b] = new_token_reserve_b / new_token_reserve_a+fee
+        return token_b_out
+        
+    if pairs[token_contract_b, token_contract_a]:
+        token_reserve_a, token_reserve_b = reserves[token_contract_b, token_contract_a]
+        k = token_reserve_a * token_reserve_b
+        new_token_reserve_a = token_reserve_a + token_amount_a
+        new_token_reserve_b = k / (new_token_reserve_a - fee)
+        token_b_out = token_reserve_b - new_token_reserve_b
+        #token_a and token_b transfers
+        token_a.transfer_from(amount=token_amount_a, to=ctx.this,
+                main_account=ctx.caller)
+        token_b.transfer(amount=token_b_out, to=ctx.caller)
+        # update reserves
+        reserves[token_contract_b, token_contract_a] = [new_token_reserve_a+fee, new_token_reserve_b]
+        # set price
+        prices[token_contract_b, token_contract_a] = new_token_reserve_b+fee / new_token_reserve_a
+        return token_b_out
+        
+    if pairs[token_contract_a, 'currency'] and pairs[token_contract_b, 'currency']:
+        currency_out = swap_token_to_tau(token_contract=token_contract_a, token_amount=token_amount_a) 
+        token_b_out = swap_tau_to_token(token_contract=token_contract_b, currency_amount=currency_out)
+        
+        return token_b_out
+        
+    return 'Market does not exist'
 
 @export
 def buy(contract: str, currency_amount: float, minimum_received: float=0,
@@ -201,13 +297,15 @@ def buy(contract: str, currency_amount: float, minimum_received: float=0,
     amm_token = I.import_module(state['TOKEN_CONTRACT'])
     assert I.enforce_interface(token, token_interface
         ), 'Invalid token interface!'
-    if contract == state['TOKEN_CONTRACT']:
+    
+    if contract == state['TOKEN_CONTRACT']: #if we are buying RSWP
         currency.transfer_from(amount=currency_amount, to=ctx.this,
             main_account=ctx.caller)
         tokens_purchased = internal_buy(contract=state['TOKEN_CONTRACT'
             ], currency_amount=currency_amount)
         token.transfer(amount=tokens_purchased, to=ctx.caller)
         return tokens_purchased
+    #if we are buying other tokens
     currency_reserve, token_reserve = reserves[contract]
     k = currency_reserve * token_reserve
     new_currency_reserve = currency_reserve + currency_amount
@@ -215,6 +313,7 @@ def buy(contract: str, currency_amount: float, minimum_received: float=0,
     tokens_purchased = token_reserve - new_token_reserve
     fee_percent = state['FEE_PERCENTAGE'] * discount[ctx.caller]
     fee = tokens_purchased * fee_percent
+    #token fees in RSWP is only applicable when buyiong other tokens
     if token_fees is True:
         fee = fee * state['TOKEN_DISCOUNT']
         rswp_k = currency_reserve * token_reserve
@@ -386,6 +485,7 @@ def sync_reserves(contract: str):
     assert new_balance > 0, 'Cannot be a negative balance!'
     reserves[contract][1] = new_balance
     return new_balance
+            
     
 def internal_buy(contract: str, currency_amount: float):
     '''
