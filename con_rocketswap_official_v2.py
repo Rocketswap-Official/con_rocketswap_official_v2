@@ -1,176 +1,121 @@
-import currency
 I = importlib
+
+v1_state = ForeignHash(foreign_contract='con_rocketswap_official_v1_1', foreign_name='state')
+v1_discount = ForeignHash(foreign_contract='con_rocketswap_official_v1_1', foreign_name='discount')
+
 token_interface = [I.Func('transfer', args=('amount', 'to')), I.Func(
     'approve', args=('amount', 'to')), I.Func('transfer_from', args=(
     'amount', 'to', 'main_account'))]
+
+base = Variable()
 pairs = Hash()
-prices = Hash(default_value=0)
-lp_points = Hash(default_value=0)
+prices = Hash()
+lp_points = Hash()
 reserves = Hash(default_value=[0, 0])
-staked_amount = Hash(default_value=0)
-discount = Hash(default_value=1)
 state = Hash()
 
 @construct
-def init():
-    state['FEE_PERCENTAGE'] = decimal('0.5') / 100
-    state['TOKEN_CONTRACT'] = 'con_rswp_lst001'
-    state['TOKEN_DISCOUNT'] = decimal('0.75')
-    state['BURN_PERCENTAGE'] = decimal('0.8')
-    state['BURN_ADDRESS'] = 'burn'
-    state['LOG_ACCURACY'] = decimal('1000000000.0')
-    state['MULTIPLIER'] = decimal('0.07')
-    state['DISCOUNT_FLOOR'] = decimal('0.505')
+def init(base_contract: str):
+    base.set(base_contract)
     state['OWNER'] = ctx.caller
 
-#TODO: method for handling token-token swap
-    
 @export
-def create_market(token_a: str, token_b: str, 
-    token_amount_a: float=0,  token_amount_b: float=0):
-    '''
-     OVERVIEW: Add the feature to create any token-token pool
-     CHECKS:
-        * two same tokens (eg. rswp-rswp pool) should not 
-          exist
-     CHANGES:
-        * pairs[token_a, token_b]
-        * prices[token_a, token_b]
-        * lp_points[token_a, token_b, ctx.caller] 
-        * lp_points[token_a, token_b] 
-        * reserves[token_a, token_b]
-    '''
-    assert token_a != token_b, 'Token contracts are the same!'
-    #check if the inverse pair already exist (B/A)
-    assert pairs[token_b, token_a] is None, f'{token_b}/{token_a} market exists!'
-    assert pairs[token_a, token_b] is None, 'Market already exists!'
-    assert token_amount_a > 0 and token_amount_b > 0, f'Must provide {token_a} amount and {token_b} amount!'
-    #ensure consistent currency(TAU)-token pool creation
-    #regardless of order of tokens naming eg: TAU-RSWP, TAU-SPANGE
-    if token_a == 'currency':
-        token_a, token_b = token_b, token_a
-        
-    contract_a = I.import_module(token_a)
-    contract_b = I.import_module(token_b)
-    assert I.enforce_interface(contract_a, token_interface
-        ), f'{token_a} has invalid token interface!'
-    assert I.enforce_interface(contract_b, token_interface
-        ), f'{token_b} has invalid token interface!'
-    contract_a.transfer_from(amount=token_amount_a, to=ctx.this,
-        main_account=ctx.caller)
-    contract_b.transfer_from(amount=token_amount_b, to=ctx.this, 
-        main_account=ctx.caller)
-    prices[token_a, token_b] = token_amount_b / token_amount_a
-    pairs[token_a, token_b] = True
-    lp_points[token_a, token_b, ctx.caller] = 100
-    lp_points[token_a, token_b] = 100
-    reserves[token_a, token_b] = [token_amount_b, token_amount_a]
-    return True
+def create_market(contract: str, base_amount: float=0, token_amount:
+    float=0):
+    assert contract != base.get(), 'Cannot create a market for the base token!'
+    assert pairs[contract] is None, 'Market already exists!'
+    assert contract != v1_state['TOKEN_CONTRACT'], 'Only operator can create this market!'
+    assert base_amount > 0 and token_amount > 0, 'Must provide base amount and token amount!'
     
-@export
-def liquidity_balance_of(token_a: str, token_b: str, account: str):
-    '''
-    CHANGES:
-        * lp_points[token_a, token_b, account] 
-    '''
-    return lp_points[token_a, token_b, account]
-    
-@export
-def add_liquidity(contract: str, currency_amount: float=0):
-    '''
-     OVERVIEW: Add the feature to add liquidity to any token-token pool
-     CHANGES:
-        * pairs[token_a, token_b]
-        * prices[token_a, token_b]
-        * lp_points[token_a, token_b, ctx.caller] 
-        * lp_points[token_a, token_b] 
-        * reserves[token_a, token_b]
-    '''
-    assert pairs[contract] is True, 'Market does not exist!'
-    assert currency_amount > 0
+    base_token = I.import_module(base.get())
     token = I.import_module(contract)
+    assert I.enforce_interface(base_token, token_interface
+        ), 'Invalid token interface!'
     assert I.enforce_interface(token, token_interface
         ), 'Invalid token interface!'
-    token_amount = currency_amount / prices[contract]
-    currency.transfer_from(amount=currency_amount, to=ctx.this,
+    base_token.transfer_from(amount=base_amount, to=ctx.this,
+        main_account=ctx.caller)
+    token.transfer_from(amount=token_amount, to=ctx.this, main_account=ctx.
+        caller)
+    prices[contract] = base_amount / token_amount
+    pairs[contract] = True
+    lp_points[contract, ctx.caller] = 100
+    lp_points[contract] = 100
+    reserves[contract] = [base_amount, token_amount]
+    return True
+
+@export
+def liquidity_balance_of(contract: str, account: str):
+    return lp_points[contract, account]
+
+@export
+def add_liquidity(contract: str, base_amount: float=0):
+    assert pairs[contract] is True, 'Market does not exist!'
+    assert base_amount > 0
+    base_token = I.import_module(base.get())
+    token = I.import_module(contract)
+    assert I.enforce_interface(base_token, token_interface
+        ), 'Invalid token interface!'
+    assert I.enforce_interface(token, token_interface
+        ), 'Invalid token interface!'
+    token_amount = base_amount / prices[contract]
+    base_token.transfer_from(amount=base_amount, to=ctx.this,
         main_account=ctx.caller)
     token.transfer_from(amount=token_amount, to=ctx.this, main_account=ctx.
         caller)
     total_lp_points = lp_points[contract]
-    currency_reserve, token_reserve = reserves[contract]
-    points_per_currency = total_lp_points / currency_reserve
-    lp_to_mint = points_per_currency * currency_amount
+    base_reserve, token_reserve = reserves[contract]
+    points_per_base = total_lp_points / base_reserve
+    lp_to_mint = points_per_base * base_amount
     lp_points[contract, ctx.caller] += lp_to_mint
     lp_points[contract] += lp_to_mint
-    reserves[contract] = [currency_reserve + currency_amount, 
+    reserves[contract] = [base_reserve + base_amount, 
         token_reserve + token_amount]
     return lp_to_mint
-    
+
 @export
 def remove_liquidity(contract: str, amount: float=0):
-    '''
-     OVERVIEW: Add the feature to remove liquidity from any token-token pool
-     CHANGES:
-        * pairs[token_a, token_b]
-        * prices[token_a, token_b]
-        * lp_points[token_a, token_b, ctx.caller] 
-        * lp_points[token_a, token_b] 
-        * reserves[token_a, token_b]
-    '''
     assert pairs[contract] is True, 'Market does not exist!'
     assert amount > 0, 'Must be a positive LP point amount!'
     assert lp_points[contract, ctx.caller
         ] >= amount, 'Not enough LP points to remove!'
+    base_token = I.import_module(base.get())
     token = I.import_module(contract)
+    assert I.enforce_interface(base_token, token_interface
+        ), 'Invalid token interface!'
     assert I.enforce_interface(token, token_interface
         ), 'Invalid token interface!'
     lp_percentage = amount / lp_points[contract]
-    currency_reserve, token_reserve = reserves[contract]
-    currency_amount = currency_reserve * lp_percentage
+    base_reserve, token_reserve = reserves[contract]
+    base_amount = base_reserve * lp_percentage
     token_amount = token_reserve * lp_percentage
-    currency.transfer(to=ctx.caller, amount=currency_amount)
+    base_token.transfer(to=ctx.caller, amount=base_amount)
     token.transfer(to=ctx.caller, amount=token_amount)
     lp_points[contract, ctx.caller] -= amount
     lp_points[contract] -= amount
     assert lp_points[contract] > 1, 'Not enough remaining liquidity!'
-    new_currency_reserve = currency_reserve - currency_amount
+    new_base_reserve = base_reserve - base_amount
     new_token_reserve = token_reserve - token_amount
-    assert new_currency_reserve > 0 and new_token_reserve > 0, 'Not enough remaining liquidity!'
-    reserves[contract] = [new_currency_reserve, new_token_reserve]
-    return currency_amount, token_amount
-    
+    assert new_base_reserve > 0 and new_token_reserve > 0, 'Not enough remaining liquidity!'
+    reserves[contract] = [new_base_reserve, new_token_reserve]
+    return base_amount, token_amount
+
 @export
 def transfer_liquidity(contract: str, to: str, amount: float):
-    '''
-     CHANGES:
-        * lp_points[token_a, token_b, ctx.caller] 
-        * lp_points[token_a, token_b] 
-    '''
     assert amount > 0, 'Must be a positive LP point amount!'
     assert lp_points[contract, ctx.caller
         ] >= amount, 'Not enough LP points to transfer!'
     lp_points[contract, ctx.caller] -= amount
     lp_points[contract, to] += amount
-    
+
 @export
 def approve_liquidity(contract: str, to: str, amount: float):
-    '''
-     CHANGES:
-        * lp_points[token_a, token_b, ctx.caller, to] 
-        
-    '''
     assert amount > 0, 'Cannot send negative balances!'
     lp_points[contract, ctx.caller, to] += amount
-    
+
 @export
 def transfer_liquidity_from(contract: str, to: str, main_account: str,
     amount: float):
-    '''
-     CHANGES: 
-        * lp_points[token_a, token_b]
-        * lp_points[token_a, token_b, ctx.caller] 
-        * lp_points[token_a, token_b, ctx.caller, to]  
-    '''
     assert amount > 0, 'Cannot send negative balances!'
     assert lp_points[contract, main_account, ctx.caller
         ] >= amount, 'Not enough coins approved to send! You have {} and are trying to spend {}'.format(
@@ -182,360 +127,212 @@ def transfer_liquidity_from(contract: str, to: str, main_account: str,
     lp_points[contract, to] += amount
 
 @export
-def swap_tau_to_token(token_contract: str, currency_amount: float):
-    assert pairs[token_contract, 'currency'] is True, 'Market does not exist'
-    assert currency_amount > 0, 'Must provide token amount!'
-    token = I.import_module(token_contract)
-    assert I.enforce_interface(token, token_interface
-        ), 'Invalid token interface!'
-    
-    fee  = currency_amount * state['FEE_PERCENTAGE']
-    currency_reserve, token_reserve = reserves[token_contract, 'currency']
-    k = currency_reserve * token_reserve
-    new_currency_reserve = currency_reserve + currency_amount
-    new_token_reserve = k / (new_currency_reserve - fee)
-    tokens_out = token_reserve - new_token_reserve
-    #TAU and token transfers
-    currency.transfer_from(amount=currency_amount, to=ctx.this,
-            main_account=ctx.caller)
-    token.transfer(amount=tokens_out, to=ctx.caller)
-    # update reserves
-    reserves[token_contract, 'currency'] = [new_currency_reserve+fee, new_token_reserve]
-    # set price
-    prices[token_contract, 'currency'] = new_currency_reserve+fee / new_token_reserve
-    return tokens_out
-
-@export
-def swap_token_to_tau(token_contract: str, token_amount: float):
-    assert pairs[token_contract, 'currency'] is True, 'Market does not exist'
-    assert token_amount > 0, 'Must provide token amount!'
-    token = I.import_module(token_contract)
-    assert I.enforce_interface(token, token_interface
-        ), 'Invalid token interface!'
-    
-    fee  = token_amount * state['FEE_PERCENTAGE']
-    currency_reserve, token_reserve = reserves[token_contract, 'currency']
-    k = currency_reserve * token_reserve
-    new_token_reserve = token_reserve + token_amount
-    new_currency_reserve = k / (new_token_reserve - fee)
-    currency_out = currency_reserve - new_currency_reserve
-    #TAU and token transfers
-    token.transfer_from(amount=token_amount, to=ctx.this,
-            main_account=ctx.caller)
-    currency.transfer(amount=currency_out, to=ctx.caller)
-    # update reserves
-    reserves[token_contract, 'currency'] = [new_currency_reserve, new_token_reserve+fee]
-    # set price
-    prices[token_contract, 'currency'] = new_currency_reserve / new_token_reserve+fee
-    return currency_out
-
-@export
-def swap_token_to_token(token_contract_a: str, token_contract_b: str, token_amount_a: float):
-    assert token_amount_a > 0, 'Must provide token amount!'
-    token_a = I.import_module(token_contract_a)
-    token_b = I.import_module(token_contract_b)
-    
-    assert I.enforce_interface(token_a, token_interface
-        ), 'Invalid token interface!'
-    assert I.enforce_interface(token_b, token_interface
-        ), 'Invalid token interface!'
-        
-    fee  = token_amount_a * state['FEE_PERCENTAGE']
-        
-    if pairs[token_contract_a, token_contract_b]:
-        token_reserve_b, token_reserve_a = reserves[token_contract_a, token_contract_b]
-        k = token_reserve_b * token_reserve_a
-        new_token_reserve_a = token_reserve_a + token_amount_a
-        new_token_reserve_b = k / (new_token_reserve_a - fee)
-        token_b_out = token_reserve_b - new_token_reserve_b
-        #token_a and token_b transfers
-        token_a.transfer_from(amount=token_amount_a, to=ctx.this,
-                main_account=ctx.caller)
-        token_b.transfer(amount=token_b_out, to=ctx.caller)
-        # update reserves
-        reserves[token_contract_a, token_contract_b] = [new_token_reserve_b, new_token_reserve_a+fee]
-        # set price
-        prices[token_contract_a, token_contract_b] = new_token_reserve_b / new_token_reserve_a+fee
-        return token_b_out
-        
-    if pairs[token_contract_b, token_contract_a]:
-        token_reserve_a, token_reserve_b = reserves[token_contract_b, token_contract_a]
-        k = token_reserve_a * token_reserve_b
-        new_token_reserve_a = token_reserve_a + token_amount_a
-        new_token_reserve_b = k / (new_token_reserve_a - fee)
-        token_b_out = token_reserve_b - new_token_reserve_b
-        #token_a and token_b transfers
-        token_a.transfer_from(amount=token_amount_a, to=ctx.this,
-                main_account=ctx.caller)
-        token_b.transfer(amount=token_b_out, to=ctx.caller)
-        # update reserves
-        reserves[token_contract_b, token_contract_a] = [new_token_reserve_a+fee, new_token_reserve_b]
-        # set price
-        prices[token_contract_b, token_contract_a] = new_token_reserve_b+fee / new_token_reserve_a
-        return token_b_out
-        
-    if pairs[token_contract_a, 'currency'] and pairs[token_contract_b, 'currency']:
-        currency_out = swap_token_to_tau(token_contract=token_contract_a, token_amount=token_amount_a) 
-        token_b_out = swap_tau_to_token(token_contract=token_contract_b, currency_amount=currency_out)
-        
-        return token_b_out
-        
-    return 'Market does not exist'
-
-@export
-def buy(contract: str, currency_amount: float, minimum_received: float=0,
+def buy(contract: str, base_amount: float, minimum_received: float=0,
     token_fees: bool=False):
-    '''
-     CHANGES:
-        * pairs[token, "currency"]
-        * prices[token, "currency"] 
-        * reserves[token, "currency"]
-    '''
-    assert pairs[contract] is True, 'Market does not exist'
-    assert currency_amount > 0, 'Must provide currency amount!'
+    assert pairs[contract] is True, 'Market does not exist!'
+    assert base_amount > 0, 'Must provide base amount!'
+    base_token = I.import_module(base.get())
     token = I.import_module(contract)
-    amm_token = I.import_module(state['TOKEN_CONTRACT'])
+    amm_token = I.import_module(v1_state['TOKEN_CONTRACT'])
+    assert I.enforce_interface(base_token, token_interface
+        ), 'Invalid token interface!'
     assert I.enforce_interface(token, token_interface
         ), 'Invalid token interface!'
-    
-    if contract == state['TOKEN_CONTRACT']: #if we are buying RSWP
-        currency.transfer_from(amount=currency_amount, to=ctx.this,
+    if contract == v1_state['TOKEN_CONTRACT']:
+        base_token.transfer_from(amount=base_amount, to=ctx.this,
             main_account=ctx.caller)
-        tokens_purchased = internal_buy(contract=state['TOKEN_CONTRACT'
-            ], currency_amount=currency_amount)
+        tokens_purchased = internal_buy(contract=v1_state['TOKEN_CONTRACT'
+            ], base_amount=base_amount)
         token.transfer(amount=tokens_purchased, to=ctx.caller)
         return tokens_purchased
-    #if we are buying other tokens
-    currency_reserve, token_reserve = reserves[contract]
-    k = currency_reserve * token_reserve
-    new_currency_reserve = currency_reserve + currency_amount
-    new_token_reserve = k / new_currency_reserve
+    
+    base_reserve, token_reserve = reserves[contract]
+    k = base_reserve * token_reserve
+    new_base_reserve = base_reserve + base_amount
+    new_token_reserve = k / new_base_reserve
     tokens_purchased = token_reserve - new_token_reserve
-    fee_percent = state['FEE_PERCENTAGE'] * discount[ctx.caller]
+    fee_percent = v1_state['FEE_PERCENTAGE'] * v1_discount[ctx.caller]
     fee = tokens_purchased * fee_percent
-    #token fees in RSWP is only applicable when buyiong other tokens
+    
     if token_fees is True:
-        fee = fee * state['TOKEN_DISCOUNT']
-        rswp_k = currency_reserve * token_reserve
+        fee = fee * v1_state['TOKEN_DISCOUNT']
+        rswp_k = base_reserve * token_reserve
         rswp_new_token_reserve = token_reserve + fee
-        rswp_new_currency_reserve = rswp_k / rswp_new_token_reserve
-        rswp_currency_purchased = currency_reserve - rswp_new_currency_reserve
-        rswp_currency_purchased += rswp_currency_purchased * fee_percent
-        rswp_currency_reserve_2, rswp_token_reserve_2 = reserves[state[
-            'TOKEN_CONTRACT']]
-        rswp_k_2 = rswp_currency_reserve_2 * rswp_token_reserve_2
-        rswp_new_currency_reserve_2 = (rswp_currency_reserve_2 +
-            rswp_currency_purchased)
-        rswp_new_currency_reserve_2 += rswp_currency_purchased * fee_percent
-        rswp_new_token_reserve_2 = rswp_k_2 / rswp_new_currency_reserve_2
+        rswp_new_base_reserve = rswp_k / rswp_new_token_reserve
+        rswp_base_purchased = base_reserve - rswp_new_base_reserve
+        rswp_base_purchased += rswp_base_purchased * fee_percent
+        rswp_base_reserve_2, rswp_token_reserve_2 = reserves[v1_state['TOKEN_CONTRACT']]
+        rswp_k_2 = rswp_base_reserve_2 * rswp_token_reserve_2
+        rswp_new_base_reserve_2 = (rswp_base_reserve_2 +
+            rswp_base_purchased)
+        rswp_new_base_reserve_2 += rswp_base_purchased * fee_percent
+        rswp_new_token_reserve_2 = rswp_k_2 / rswp_new_base_reserve_2
         sell_amount = rswp_token_reserve_2 - rswp_new_token_reserve_2
-        sell_amount_with_fee = sell_amount * state['BURN_PERCENTAGE']
+        #assert 5 < 1, f'{type(v1_state["BURN_PERCENTAGE"])}' 
+        sell_amount_with_fee = sell_amount * v1_state['BURN_PERCENTAGE']
         amm_token.transfer_from(amount=sell_amount, to=ctx.this,
             main_account=ctx.caller)
-        currency_received = internal_sell(contract=state[
-            'TOKEN_CONTRACT'], token_amount=sell_amount_with_fee)
+        base_received = internal_sell(contract=v1_state['TOKEN_CONTRACT'], 
+            token_amount=sell_amount_with_fee)
         amm_token.transfer(amount=sell_amount - sell_amount_with_fee, to=
-            state['BURN_ADDRESS'])
-        token_received = internal_buy(contract=contract, currency_amount=
-            currency_received)
-        new_currency_reserve += reserves[contract][0] - currency_reserve
-        new_token_reserve += reserves[contract][1] - token_reserve
+            v1_state['BURN_ADDRESS'])
+        token_received = internal_buy(contract=contract, base_amount=
+            base_received)
+        
+        new_base_reserve += reserves[contract][0] - base_reserve #int = d.decimal - int
+        new_token_reserve += reserves[contract][1] - token_reserve #float  =  d.decimal - int
         new_token_reserve = new_token_reserve + token_received
-    else:
+    else: 
         tokens_purchased = tokens_purchased - fee
-        burn_amount = internal_buy(contract=state['TOKEN_CONTRACT'],
-            currency_amount=internal_sell(contract=contract, token_amount
-            =fee - fee * state['BURN_PERCENTAGE']))
-        new_currency_reserve += reserves[contract][0] - currency_reserve
-        new_token_reserve +=reserves[contract][1] - token_reserve
-        new_token_reserve = new_token_reserve + fee * state['BURN_PERCENTAGE'
-            ]
-        amm_token.transfer(amount=burn_amount, to=state['BURN_ADDRESS'])
+        burn_amount = internal_buy(contract=v1_state['TOKEN_CONTRACT'], base_amount=
+            internal_sell(contract=contract, token_amount=fee - fee * v1_state['BURN_PERCENTAGE']))
+        new_base_reserve += reserves[contract][0] - base_reserve
+        new_token_reserve += reserves[contract][1] - token_reserve
+        new_token_reserve = new_token_reserve + fee * v1_state['BURN_PERCENTAGE']
+        amm_token.transfer(amount=burn_amount, to=v1_state['BURN_ADDRESS'])
+     
     if minimum_received != None:
-        assert tokens_purchased >= minimum_received, 'Only {} tokens can be purchased, which is less than your minimum, which is {} tokens.'.format(
+        assert tokens_purchased >= minimum_received, 'Only {} tokens can be purchased, \
+            which is less than your minimum, which is {} tokens.'.format(
             tokens_purchased, minimum_received)
     assert tokens_purchased > 0, 'Token reserve error!'
-    currency.transfer_from(amount=currency_amount, to=ctx.this,
-        main_account=ctx.caller)
+    base_token.transfer_from(amount=base_amount, to=ctx.this,
+        main_account=ctx.caller)   
     token.transfer(amount=tokens_purchased, to=ctx.caller)
-    reserves[contract] = [new_currency_reserve, new_token_reserve]
-    prices[contract] = new_currency_reserve / new_token_reserve
+    reserves[contract] = [new_base_reserve, new_token_reserve]
+    prices[contract] = new_base_reserve / new_token_reserve
     return tokens_purchased
-    
+
 @export
 def sell(contract: str, token_amount: float, minimum_received: float=0,
     token_fees: bool=False):
-    '''
-     CHANGES:
-        * pairs[token, "currency"]
-        * prices[token, "currency"] 
-        * reserves[token, "currency"]
-    '''
     assert pairs[contract] is True, 'Market does not exist!'
-    assert token_amount > 0, 'Must provide currency amount and token amount!'
+    assert token_amount > 0, 'Must provide base amount and token amount!'
+    base_token = I.import_module(base.get())
     token = I.import_module(contract)
-    amm_token = I.import_module(state['TOKEN_CONTRACT'])
+    amm_token = I.import_module(v1_state['TOKEN_CONTRACT'])
+    assert I.enforce_interface(base_token, token_interface
+        ), 'Invalid token interface!'
     assert I.enforce_interface(token, token_interface
         ), 'Invalid token interface!'
-    if contract == state['TOKEN_CONTRACT']:
+    if contract == v1_state['TOKEN_CONTRACT']:
         token.transfer_from(amount=token_amount, to=ctx.this, main_account=
             ctx.caller)
-        currency_purchased = internal_sell(contract=state[
-            'TOKEN_CONTRACT'], token_amount=token_amount)
-        currency.transfer(amount=currency_purchased, to=ctx.caller)
-        return currency_purchased
-    currency_reserve, token_reserve = reserves[contract]
-    k = currency_reserve * token_reserve
+        base_purchased = internal_sell(contract=v1_state['TOKEN_CONTRACT'], 
+            token_amount=token_amount)
+        base_token.transfer(amount=base_purchased, to=ctx.caller)
+        return base_purchased
+    base_reserve, token_reserve = reserves[contract]
+    k = base_reserve * token_reserve
     new_token_reserve = token_reserve + token_amount
-    new_currency_reserve = k / new_token_reserve
-    currency_purchased = currency_reserve - new_currency_reserve
-    fee_percent = state['FEE_PERCENTAGE'] * discount[ctx.caller]
-    fee = currency_purchased * fee_percent
+    new_base_reserve = k / new_token_reserve
+    base_purchased = base_reserve - new_base_reserve
+    fee_percent = v1_state['FEE_PERCENTAGE'] * v1_discount[ctx.caller]
+    fee = base_purchased * fee_percent
     if token_fees is True:
-        fee = fee * state['TOKEN_DISCOUNT']
-        rswp_currency_reserve, rswp_token_reserve = reserves[state[
-            'TOKEN_CONTRACT']]
-        rswp_k = rswp_currency_reserve * rswp_token_reserve
-        rswp_new_currency_reserve = rswp_currency_reserve + fee
-        rswp_new_currency_reserve += fee * fee_percent
-        rswp_new_token_reserve = rswp_k / rswp_new_currency_reserve
+        fee = fee * v1_state['TOKEN_DISCOUNT']
+        rswp_base_reserve, rswp_token_reserve = reserves[v1_state['TOKEN_CONTRACT']]
+        rswp_k = rswp_base_reserve * rswp_token_reserve
+        rswp_new_base_reserve = rswp_base_reserve + fee
+        rswp_new_base_reserve += fee * fee_percent
+        rswp_new_token_reserve = rswp_k / rswp_new_base_reserve
         sell_amount = rswp_token_reserve - rswp_new_token_reserve
-        sell_amount_with_fee = sell_amount * state['BURN_PERCENTAGE']
+        sell_amount_with_fee = sell_amount * v1_state['BURN_PERCENTAGE']
         amm_token.transfer_from(amount=sell_amount, to=ctx.this,
             main_account=ctx.caller)
-        currency_received = internal_sell(contract=state[
-            'TOKEN_CONTRACT'], token_amount=sell_amount_with_fee)
+        base_received = internal_sell(contract=v1_state['TOKEN_CONTRACT'], 
+            token_amount=sell_amount_with_fee)
         amm_token.transfer(amount=sell_amount - sell_amount_with_fee, to=
-            state['BURN_ADDRESS'])
-        new_currency_reserve = new_currency_reserve + currency_received
+            v1_state['BURN_ADDRESS'])
+        new_base_reserve = new_base_reserve + base_received
     else:
-        currency_purchased = currency_purchased - fee
-        burn_amount = fee - fee * state['BURN_PERCENTAGE']
-        new_currency_reserve = new_currency_reserve + fee * state[
-            'BURN_PERCENTAGE']
-        token_received = internal_buy(contract=state['TOKEN_CONTRACT'],
-            currency_amount=burn_amount)
-        amm_token.transfer(amount=token_received, to=state['BURN_ADDRESS'])
+        base_purchased = base_purchased - fee
+        burn_amount = fee - fee * v1_state['BURN_PERCENTAGE']
+        new_base_reserve = new_base_reserve + fee * v1_state['BURN_PERCENTAGE']
+        token_received = internal_buy(contract=v1_state['TOKEN_CONTRACT'],
+            base_amount=burn_amount)
+        amm_token.transfer(amount=token_received, to=v1_state['BURN_ADDRESS'])
     if minimum_received != None:
-        assert currency_purchased >= minimum_received, 'Only {} TAU can be purchased, which is less than your minimum, which is {} TAU.'.format(
-            currency_purchased, minimum_received)
-    assert currency_purchased > 0, 'Token reserve error!'
+        assert base_purchased >= minimum_received, 'Only {} TAU can be purchased, which is less than your minimum, which is {} TAU.'.format(
+            base_purchased, minimum_received)
+    assert base_purchased > 0, 'Token reserve error!'
     token.transfer_from(amount=token_amount, to=ctx.this, main_account=ctx.
         caller)
-    currency.transfer(amount=currency_purchased, to=ctx.caller)
-    reserves[contract] = [new_currency_reserve, new_token_reserve]
-    prices[contract] = new_currency_reserve / new_token_reserve
-    return currency_purchased
-    
+    base_token.transfer(amount=base_purchased, to=ctx.caller)
+    reserves[contract] = [new_base_reserve, new_token_reserve]
+    prices[contract] = new_base_reserve / new_token_reserve
+    return base_purchased
+
 @export
-def stake(amount: float, token_contract: str=None):
-    assert amount >= 0, 'Must be a positive stake amount!'
-    if token_contract == None:
-        token_contract = state['TOKEN_CONTRACT']
-    amm_token = I.import_module(token_contract)
-    current_balance = staked_amount[ctx.caller, token_contract]
-    if amount < current_balance:
-        amm_token.transfer(current_balance - amount, ctx.caller)
-        staked_amount[ctx.caller, token_contract] = amount
-        discount_amount = state['LOG_ACCURACY'] * (staked_amount[ctx.
-            caller, state['TOKEN_CONTRACT']] ** (1 / state[
-            'LOG_ACCURACY']) - 1) * state['MULTIPLIER'] - state[
-            'DISCOUNT_FLOOR']
-        if discount_amount > decimal('0.99'):
-            discount_amount = decimal('0.99')
-        if discount_amount < 0:
-            discount_amount = 0
-        discount[ctx.caller] = 1 - discount_amount
-        return discount_amount
-    elif amount > current_balance:
-        amm_token.transfer_from(amount - current_balance, ctx.this, ctx.caller)
-        staked_amount[ctx.caller, token_contract] = amount
-        discount_amount = state['LOG_ACCURACY'] * (staked_amount[ctx.
-            caller, state['TOKEN_CONTRACT']] ** (1 / state[
-            'LOG_ACCURACY']) - 1) * state['MULTIPLIER'] - state[
-            'DISCOUNT_FLOOR']
-        if discount_amount > decimal('0.99'):
-            discount_amount = decimal('0.99')
-        if discount_amount < 0:
-            discount_amount = 0
-        discount[ctx.caller] = 1 - discount_amount
-        return discount_amount
-        
-@export
-def change_state(key: str, new_value: str, convert_to_decimal: bool=False):
-    assert state['OWNER'] == ctx.caller, 'Not the owner!'
-    if convert_to_decimal:
-        new_value = decimal(new_value)
-    state[key] = new_value
-    return new_value
+def create_rswp_market(base_amount: float=0, token_amount: float=0):
+    assert ctx.caller == state['OWNER'], 'Only owner can call this method!'
+    assert pairs[v1_state['TOKEN_CONTRACT']] is None, 'Market already exists!'
+    assert base_amount > 0 and token_amount > 0, 'Must provide base amount and token amount!'
     
-@export
-def change_state_float(key: str, new_value: float, convert_to_int: bool=False):
-    assert state['OWNER'] == ctx.caller, 'Not the owner!'
-    if convert_to_int:
-        new_value = int(new_value)
-    state[key] = new_value
-    return new_value
-    
+    base_token = I.import_module(base.get())
+    amm_token = I.import_module(v1_state['TOKEN_CONTRACT'])
+    assert I.enforce_interface(base_token, token_interface
+        ), 'Invalid token interface!'
+    base_token.transfer_from(amount=base_amount, to=ctx.this,
+        main_account=ctx.caller)
+    amm_token.transfer_from(amount=token_amount, to=ctx.this, main_account=ctx.
+        caller)
+    prices[v1_state['TOKEN_CONTRACT']] = base_amount / token_amount
+    pairs[v1_state['TOKEN_CONTRACT']] = True
+    lp_points[v1_state['TOKEN_CONTRACT'], ctx.caller] = 100
+    lp_points[v1_state['TOKEN_CONTRACT']] = 100
+    reserves[v1_state['TOKEN_CONTRACT']] = [base_amount, token_amount]
+    return True
+
 @export
 def sync_reserves(contract: str):
     assert state['SYNC_ENABLED'] is True, 'Sync is not enabled!'
     token = I.import_module(contract)
+    #TODO: use foreign hash to get this contract balance of any token
     new_balance = token.balance_of(ctx.this)
     assert new_balance > 0, 'Cannot be a negative balance!'
     reserves[contract][1] = new_balance
     return new_balance
-            
     
-def internal_buy(contract: str, currency_amount: float):
-    '''
-     CHANGES:
-        * pairs[token, "currency"]
-        * prices[token, "currency"] 
-        * reserves[token, "currency"]
-    '''
+def internal_buy(contract: str, base_amount: float):
     assert pairs[contract] is True, 'RSWP Market does not exist!'
-    if currency_amount <= 0:
+    if base_amount <= 0:
         return 0
     token = I.import_module(contract)
     assert I.enforce_interface(token, token_interface
         ), 'Invalid token interface!'
-    currency_reserve, token_reserve = reserves[contract]
-    k = currency_reserve * token_reserve
-    new_currency_reserve = currency_reserve + currency_amount
-    new_token_reserve = k / new_currency_reserve
+    
+    base_reserve, token_reserve = reserves[contract]
+    #assert 5 < 1, f'{type(base_reserve)}' int
+    k = base_reserve * token_reserve
+    new_base_reserve = base_reserve + base_amount # type(base_amount) = decimal.decimal
+    #assert 5 < 1, f'{type(new_base_reserve)}' decimal.decimal
+    new_token_reserve = k / new_base_reserve
     tokens_purchased = token_reserve - new_token_reserve
-    fee = tokens_purchased * state['FEE_PERCENTAGE']
+    fee = tokens_purchased * v1_state['FEE_PERCENTAGE']
     tokens_purchased -= fee
     new_token_reserve += fee
     assert tokens_purchased > 0, 'Token reserve error!'
-    reserves[contract] = [new_currency_reserve, new_token_reserve]
-    prices[contract] = new_currency_reserve / new_token_reserve
+    reserves[contract] = [new_base_reserve, new_token_reserve]
+    prices[contract] = new_base_reserve / new_token_reserve
     return tokens_purchased
-    
+
 def internal_sell(contract: str, token_amount: float):
-    '''
-     CHANGES:
-        * pairs[token, "currency"]
-        * prices[token, "currency"] 
-        * reserves[token, "currency"]
-    '''
     assert pairs[contract] is True, 'RSWP Market does not exist!'
     if token_amount <= 0:
         return 0
     token = I.import_module(contract)
     assert I.enforce_interface(token, token_interface
         ), 'Invalid token interface!'
-    currency_reserve, token_reserve = reserves[contract]
-    k = currency_reserve * token_reserve
+    base_reserve, token_reserve = reserves[contract]
+    k = base_reserve * token_reserve
     new_token_reserve = token_reserve + token_amount
-    new_currency_reserve = k / new_token_reserve
-    currency_purchased = currency_reserve - new_currency_reserve
-    fee = currency_purchased * state['FEE_PERCENTAGE']
-    currency_purchased -= fee
-    new_currency_reserve += fee
-    assert currency_purchased > 0, 'Token reserve error!'
-    reserves[contract] = [new_currency_reserve, new_token_reserve]
-    prices[contract] = new_currency_reserve / new_token_reserve
-    return currency_purchased
-
+    new_base_reserve = k / new_token_reserve
+    base_purchased = base_reserve - new_base_reserve
+    fee = base_purchased * v1_state['FEE_PERCENTAGE']
+    base_purchased -= fee
+    new_base_reserve += fee
+    assert base_purchased > 0, 'Token reserve error!'
+    reserves[contract] = [new_base_reserve, new_token_reserve]
+    prices[contract] = new_base_reserve / new_token_reserve
+    return base_purchased
