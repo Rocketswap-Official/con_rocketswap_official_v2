@@ -33,6 +33,7 @@ def seed(): #These are supposed to be constants, but they are changable
     state['OWNER'] = ctx.caller 
     #for testing
     discount['benji'] = 1
+    discount['marvin'] = 1
 
 @export
 def create_market(contract: str, currency_amount: float=0, token_amount: float=0):
