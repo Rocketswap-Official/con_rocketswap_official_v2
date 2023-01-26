@@ -33,15 +33,28 @@ def create_market(contract: str, base_amount: float=0, token_amount:
         ), 'Invalid token interface!'
     assert I.enforce_interface(token, token_interface
         ), 'Invalid token interface!'
+
+    # import foreign balances hashes
+    base_balance = ForeignHash(foreign_contract=base.get(), foreign_name='balances')
+    token_balance = ForeignHash(foreign_contract=contract, foreign_name='balances')
+
+    v2_base_balance_1 = base_balance[ctx.this]
     base_token.transfer_from(amount=base_amount, to=ctx.this,
         main_account=ctx.caller)
+    v2_base_balance_2 = base_balance[ctx.this]
+    real_base_amount = v2_base_balance_2 - v2_base_balance_1
+
+    v2_token_balance_1 = token_balance[ctx.this]
     token.transfer_from(amount=token_amount, to=ctx.this, main_account=ctx.
         caller)
-    prices[contract] = base_amount / token_amount
+    v2_token_balance_2 = token_balance[ctx.this]
+    real_token_amount = v2_token_balance_2 - v2_token_balance_1
+
+    prices[contract] = real_base_amount / real_token_amount
     pairs[contract] = True
     lp_points[contract, ctx.caller] = 100
     lp_points[contract] = 100
-    reserves[contract] = [base_amount, token_amount]
+    reserves[contract] = [real_base_amount, real_token_amount]
     return True
 
 @export
@@ -58,19 +71,33 @@ def add_liquidity(contract: str, base_amount: float=0):
         ), 'Invalid token interface!'
     assert I.enforce_interface(token, token_interface
         ), 'Invalid token interface!'
+
+    # import foreign balances hashes
+    base_balance = ForeignHash(foreign_contract=base.get(), foreign_name='balances')
+    token_balance = ForeignHash(foreign_contract=contract, foreign_name='balances')
+
     token_amount = base_amount / prices[contract]
+
+    v2_base_balance_1 = base_balance[ctx.this]
     base_token.transfer_from(amount=base_amount, to=ctx.this,
         main_account=ctx.caller)
+    v2_base_balance_2 = base_balance[ctx.this]
+    real_base_amount = v2_base_balance_2 - v2_base_balance_1
+
+    v2_token_balance_1 = token_balance[ctx.this]
     token.transfer_from(amount=token_amount, to=ctx.this, main_account=ctx.
         caller)
+    v2_token_balance_2 = token_balance[ctx.this]
+    real_token_amount = v2_token_balance_2 - v2_token_balance_1
+
     total_lp_points = lp_points[contract]
     base_reserve, token_reserve = reserves[contract]
     points_per_base = total_lp_points / base_reserve
-    lp_to_mint = points_per_base * base_amount
+    lp_to_mint = points_per_base * real_base_amount
     lp_points[contract, ctx.caller] += lp_to_mint
     lp_points[contract] += lp_to_mint
-    reserves[contract] = [base_reserve + base_amount, 
-        token_reserve + token_amount]
+    reserves[contract] = [base_reserve + real_base_amount, 
+        token_reserve + real_token_amount]
     return lp_to_mint
 
 @export
@@ -109,9 +136,12 @@ def transfer_liquidity(contract: str, to: str, amount: float):
     lp_points[contract, to] += amount
 
 @export
-def approve_liquidity(contract: str, to: str, amount: float):
+def approve_liquidity(contract: str, to: str, amount: float, ctx_to_signer: bool=False):
     assert amount > 0, 'Cannot send negative balances!'
-    lp_points[contract, ctx.caller, to] += amount
+    if ctx_to_signer is True:
+        lp_points[contract, ctx.signer, to] += amount
+    else:
+        lp_points[contract, ctx.caller, to] += amount
 
 @export
 def transfer_liquidity_from(contract: str, to: str, main_account: str,
@@ -138,17 +168,34 @@ def buy(contract: str, base_amount: float, minimum_received: float=0,
         ), 'Invalid token interface!'
     assert I.enforce_interface(token, token_interface
         ), 'Invalid token interface!'
+    
+    # import foreign balances hashes
+    base_balance = ForeignHash(foreign_contract=base.get(), foreign_name='balances')
+
     if contract == v1_state['TOKEN_CONTRACT']:
+        v2_base_balance_1 = base_balance[ctx.this]
+
         base_token.transfer_from(amount=base_amount, to=ctx.this,
             main_account=ctx.caller)
+
+        v2_base_balance_2 = base_balance[ctx.this]
+        real_base_amount = v2_base_balance_2 - v2_base_balance_1
+
         tokens_purchased = internal_buy(contract=v1_state['TOKEN_CONTRACT'
-            ], base_amount=base_amount)
+             ], base_amount=real_base_amount)
+
         token.transfer(amount=tokens_purchased, to=ctx.caller)
         return tokens_purchased
-    
+
+    v2_base_balance_1 = base_balance[ctx.this]
+    base_token.transfer_from(amount=base_amount, to=ctx.this,
+        main_account=ctx.caller)
+    v2_base_balance_2 = base_balance[ctx.this]
+    real_base_amount = v2_base_balance_2 - v2_base_balance_1
+
     base_reserve, token_reserve = reserves[contract]
     k = base_reserve * token_reserve
-    new_base_reserve = base_reserve + base_amount
+    new_base_reserve = base_reserve + real_base_amount
     new_token_reserve = k / new_base_reserve
     tokens_purchased = token_reserve - new_token_reserve
     fee_percent = v1_state['FEE_PERCENTAGE'] * v1_discount[ctx.caller]
@@ -196,8 +243,7 @@ def buy(contract: str, base_amount: float, minimum_received: float=0,
             which is less than your minimum, which is {} tokens.'.format(
             tokens_purchased, minimum_received)
     assert tokens_purchased > 0, 'Token reserve error!'
-    base_token.transfer_from(amount=base_amount, to=ctx.this,
-        main_account=ctx.caller)   
+       
     token.transfer(amount=tokens_purchased, to=ctx.caller)
     reserves[contract] = [new_base_reserve, new_token_reserve]
     prices[contract] = new_base_reserve / new_token_reserve
@@ -215,16 +261,32 @@ def sell(contract: str, token_amount: float, minimum_received: float=0,
         ), 'Invalid token interface!'
     assert I.enforce_interface(token, token_interface
         ), 'Invalid token interface!'
+
+    # import foreign balances hashes
+    token_balance = ForeignHash(foreign_contract=contract, foreign_name='balances')
+
     if contract == v1_state['TOKEN_CONTRACT']:
+        v2_token_balance_1 = token_balance[ctx.this]
+
         token.transfer_from(amount=token_amount, to=ctx.this, main_account=
             ctx.caller)
+        v2_token_balance_2 = token_balance[ctx.this]
+        real_token_amount = v2_token_balance_2 - v2_token_balance_1
+        
         base_purchased = internal_sell(contract=v1_state['TOKEN_CONTRACT'], 
-            token_amount=token_amount)
+            token_amount=real_token_amount)
         base_token.transfer(amount=base_purchased, to=ctx.caller)
         return base_purchased
+
+    v2_token_balance_1 = token_balance[ctx.this]
+    token.transfer_from(amount=token_amount, to=ctx.this, main_account=
+        ctx.caller)
+    v2_token_balance_2 = token_balance[ctx.this]
+    real_token_amount = v2_token_balance_2 - v2_token_balance_1
+        
     base_reserve, token_reserve = reserves[contract]
     k = base_reserve * token_reserve
-    new_token_reserve = token_reserve + token_amount
+    new_token_reserve = token_reserve + real_token_amount
     new_base_reserve = k / new_token_reserve
     base_purchased = base_reserve - new_base_reserve
     fee_percent = v1_state['FEE_PERCENTAGE'] * v1_discount[ctx.caller]
@@ -256,8 +318,7 @@ def sell(contract: str, token_amount: float, minimum_received: float=0,
         assert base_purchased >= minimum_received, 'Only {} TAU can be purchased, which is less than your minimum, which is {} TAU.'.format(
             base_purchased, minimum_received)
     assert base_purchased > 0, 'Token reserve error!'
-    token.transfer_from(amount=token_amount, to=ctx.this, main_account=ctx.
-        caller)
+    
     base_token.transfer(amount=base_purchased, to=ctx.caller)
     reserves[contract] = [new_base_reserve, new_token_reserve]
     prices[contract] = new_base_reserve / new_token_reserve
@@ -288,8 +349,8 @@ def create_rswp_market(base_amount: float=0, token_amount: float=0):
 def sync_reserves(contract: str):
     assert state['SYNC_ENABLED'] is True, 'Sync is not enabled!'
     token = I.import_module(contract)
-    #TODO: use foreign hash to get this contract balance of any token
-    new_balance = token.balance_of(ctx.this)
+    token_balance = ForeignHash(foreign_contract=base.get(), foreign_name='balances')
+    new_balance = token_balance['ctx.this']
     assert new_balance > 0, 'Cannot be a negative balance!'
     reserves[contract][1] = new_balance
     return new_balance
