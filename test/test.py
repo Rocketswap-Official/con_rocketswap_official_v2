@@ -17,13 +17,18 @@ class MyTestCase(unittest.TestCase):
             self.c.submit(code, name='con_lusd_lst001', constructor_args={'vk': 'sys'})
             self.c.submit(code, name='con_marmite100_contract', constructor_args={'vk': 'sys'})
             self.c.submit(code, name='con_spange_lst001', constructor_args={'vk': 'sys'})
-              
 
         self.currency = self.c.get_contract('currency')
         self.rswp = self.c.get_contract('con_rswp_lst001')
         self.marmite = self.c.get_contract('con_marmite100_contract')
         self.lusd = self.c.get_contract('con_lusd_lst001')
         self.spange = self.c.get_contract('con_spange_lst001')
+
+        with open('deflationary_token.py') as f:
+            code = f.read()
+            self.c.submit(code, name='con_deflation_token', constructor_args={'vk': 'sys'})
+
+        self.defl = self.c.get_contract('con_deflation_token')
 
          # Deploy rocketswap v1
          # we need v1 states for v2
@@ -73,6 +78,7 @@ class MyTestCase(unittest.TestCase):
         self.rswp.approve(signer='sys', amount=999999999, to='con_dex_lusd')
         self.marmite.approve(signer='sys', amount=999999999, to='con_dex_lusd')
         self.spange.approve(signer='sys', amount=999999999, to='con_dex_lusd')
+        self.defl.approve(signer='sys', amount=999999999, to='con_dex_lusd')
 
         self.currency.approve(signer='sys', amount=999999999, to='con_dex_marmite')
         self.lusd.approve(signer='sys', amount=999999999, to='con_dex_marmite')
@@ -147,6 +153,18 @@ class MyTestCase(unittest.TestCase):
         self.lusd.transfer(signer='sys', amount=1500, to='benji')
         self.spange.transfer(signer='sys', amount=1_000_000, to='benji')
 
+        # Set default balances
+        self.currency.balances['con_dex_lusd'] = 0
+        self.currency.balances['con_dex_spange'] = 0
+        self.lusd.balances['con_dex_currency'] = 0
+        self.lusd.balances['con_dex_lusd'] = 0
+        self.lusd.balances['con_dex_marmite'] = 0
+        self.lusd.balances['con_dex_spange'] = 0
+        self.marmite.balances['con_dex_marmite'] = 0
+        self.marmite.balances['con_dex_lusd'] = 0
+        self.spange.balances['con_dex_marmite'] = 0
+        self.spange.balances['con_dex_spange'] = 0
+        
         # Create LUSD-RSWP market
         # must exist for RSWP burning and token fees 
         self.dex_lusd.create_rswp_market(signer='sys', base_amount=1000, token_amount=1000)
@@ -365,6 +383,191 @@ class MyTestCase(unittest.TestCase):
         self.assertEqual(self.dex_currency.prices['con_rswp_lst001'], price_rswp)
         self.assertEqual(self.dex_lusd.prices['currency'], price_tau)
         self.assertEqual(self.dex_lusd.prices['con_marmite100_contract'], price_marmite)
+
+    # V1 STATE
+
+    def test_changing_v1_states_should_reflect_in_v2(self):
+        #self.dex_v1.state['FEE_PERCENTAGE'] = ContractingDecimal('0.3')/100
+        v1_fee_perc = self.dex_v1.state['FEE_PERCENTAGE']
+        v1_discount_benji = self.dex_v1.discount['benji']
+
+        # Create LUSD-MARMITE market
+        self.dex_lusd.create_market(signer='sys', contract='con_marmite100_contract',
+            base_amount=50_000_000, token_amount=2_000_000)
+
+        # Calculate purchased amount
+        base_reserve, token_reserve = self.dex_lusd.reserves['con_marmite100_contract']
+        k = base_reserve * token_reserve
+        new_token_reserve = token_reserve + 300
+        new_base_reserve = k / new_token_reserve
+        base_purchased = base_reserve - new_base_reserve
+        fee_percent = v1_fee_perc * v1_discount_benji
+        fee = base_purchased * fee_percent
+        base_purchased = base_purchased - fee
+        
+        # Sell 300 MARMITE
+        purchased = self.dex_lusd.sell(signer='benji', contract='con_marmite100_contract', token_amount=300)
+
+        self.assertEqual(base_purchased, purchased)
+
+        # Change v1 state fee percent
+        self.dex_v1.change_state(key='FEE_PERCENTAGE', new_value='0.005', convert_to_decimal=True)
+
+        v1_fee_perc = ContractingDecimal('0.005')
+        v1_discount_benji = self.dex_v1.discount['benji']
+
+        # Calculate purchased amount
+        base_reserve_2, token_reserve_2 = self.dex_lusd.reserves['con_marmite100_contract']
+        k = base_reserve_2 * token_reserve_2
+        new_token_reserve_2 = token_reserve_2 + 300
+        new_base_reserve_2 = k / new_token_reserve_2
+        base_purchased_2 = base_reserve_2 - new_base_reserve_2
+        fee_percent = v1_fee_perc * v1_discount_benji
+        fee = base_purchased_2 * fee_percent
+        base_purchased_2 = base_purchased_2 - fee
+
+        # Sell 300 MARMITE
+        purchased_2 = self.dex_lusd.sell(signer='benji', contract='con_marmite100_contract', token_amount=300)
+    
+        self.assertEqual(base_purchased_2, purchased_2)
+
+    # BALANCE DIFFERENCE
+
+    def test_v2_acquires_accurate_value_of_token_amount_received(self):
+        v1_fee_perc = self.dex_v1.state['FEE_PERCENTAGE']
+        self.dex_v1.discount['sys'] = 1
+
+        dex_balance_defl_1 = self.defl.balances['con_dex_lusd']
+
+        # Create LUSD-DEFL market
+        self.dex_lusd.create_market(signer='sys', contract='con_deflation_token',
+            base_amount=5000, token_amount=2000)
+
+        dex_balance_defl_2 = self.defl.balances['con_dex_lusd']
+        amount_defl_1 = dex_balance_defl_2 - dex_balance_defl_1
+
+        base_reserve, token_reserve = self.dex_lusd.reserves['con_deflation_token']
+
+        self.assertEqual(amount_defl_1, token_reserve)
+
+        # Sell 500 DEFL
+        base_purchased = self.dex_lusd.sell(signer='sys', contract='con_deflation_token',token_amount=500)
+
+        dex_balance_defl_3 = self.defl.balances['con_dex_lusd']
+        amount_defl_2 = dex_balance_defl_3 - dex_balance_defl_2
+
+        # Calculate purchased amount
+        k = base_reserve * token_reserve
+        new_token_reserve = token_reserve + amount_defl_2
+        new_base_reserve = k / new_token_reserve
+        base_purchased_2 = base_reserve - new_base_reserve
+        fee_percent = v1_fee_perc * 1 # default discount value
+        fee = base_purchased_2 * fee_percent
+        base_purchased_2 = base_purchased_2 - fee
+
+        self.assertEqual(base_purchased, base_purchased_2)
+
+    # TRANSFER LIQUIDITY
+
+    def test_transfer_liquidity_from_reduces_approve_account(self):
+        self.dex_lusd.lp_points['currency', 'sys', 'benji'] = 0
+        self.dex_lusd.lp_points['currency', 'sys', 'marvin'] = 0
+        self.dex_lusd.lp_points['currency', 'sys'] = 0
+        self.dex_lusd.lp_points['currency', 'benji'] = 0
+
+        self.dex_lusd.create_market(contract='currency', base_amount=1000, token_amount=1000)
+
+        self.dex_lusd.approve_liquidity(contract='currency', to='marvin', amount=20)
+
+        self.dex_lusd.transfer_liquidity_from(contract='currency', to='benji', 
+            main_account='sys', amount=20, signer='marvin')
+
+        self.assertEqual(self.dex_lusd.lp_points['currency', 'sys', 'marvin'], 0)
+
+    def test_transfer_liquidity_from_fails_if_negative(self):
+        self.dex_lusd.lp_points['currency', 'sys', 'benji'] = 0
+        self.dex_lusd.lp_points['currency', 'sys', 'marvin'] = 0
+        self.dex_lusd.lp_points['currency', 'sys'] = 0
+        self.dex_lusd.lp_points['currency', 'benji'] = 0
+        
+        self.dex_lusd.create_market(contract='currency', base_amount=1000, token_amount=1000)
+
+        self.dex_lusd.approve_liquidity(contract='currency', to='marvin', amount=20)
+
+        with self.assertRaises(AssertionError):
+            self.dex_lusd.transfer_liquidity_from(signer='marvin', contract='currency', to='benji', 
+                main_account='sys', amount=-1)
+
+    def test_transfer_liquidity_from_works(self):
+        self.dex_lusd.lp_points['currency', 'sys', 'benji'] = 0
+        self.dex_lusd.lp_points['currency', 'sys', 'marvin'] = 0
+        self.dex_lusd.lp_points['currency', 'sys'] = 0
+        self.dex_lusd.lp_points['currency', 'benji'] = 0
+
+        self.dex_lusd.create_market(contract='currency', base_amount=1000, token_amount=1000)
+
+        self.dex_lusd.approve_liquidity(contract='currency', to='marvin', amount=20)
+
+        self.dex_lusd.transfer_liquidity_from(signer='marvin', contract='currency', to='benji', main_account='sys', 
+            amount=20)
+
+        self.assertEqual(self.dex_lusd.liquidity_balance_of(contract='currency', account='benji'), 20)
+        self.assertEqual(self.dex_lusd.liquidity_balance_of(contract='currency', account='sys'), 80)
+
+        self.dex_lusd.remove_liquidity(signer='benji', contract='currency', amount=20)
+
+        self.assertEqual(self.currency.balances['benji'], 5200)
+        self.assertEqual(self.lusd.balances['benji'], 1700)
+
+    def test_transfer_liquidity_fails_on_negatives(self):
+        self.dex_lusd.lp_points['currency', 'sys', 'benji'] = 0
+        self.dex_lusd.lp_points['currency', 'sys', 'marvin'] = 0
+        self.dex_lusd.lp_points['currency', 'sys'] = 0
+        self.dex_lusd.lp_points['currency', 'benji'] = 0
+
+        self.dex_lusd.create_market(contract='currency', base_amount=1000, token_amount=1000)
+
+        with self.assertRaises(AssertionError):
+            self.dex_lusd.transfer_liquidity(contract='currency', amount=-1, to='benji')
+
+    def test_transfer_liquidity_fails_if_less_than_balance(self):
+
+        self.dex_lusd.create_market(contract='currency', base_amount=1000, token_amount=1000)
+
+        with self.assertRaises(AssertionError):
+            self.dex_lusd.transfer_liquidity(contract='currency', amount=101, to='benji')
+
+    def test_transfer_liquidity_works(self):
+        self.dex_lusd.lp_points['currency', 'sys', 'benji'] = 0
+        self.dex_lusd.lp_points['currency', 'sys', 'marvin'] = 0
+        self.dex_lusd.lp_points['currency', 'sys'] = 0
+        self.dex_lusd.lp_points['currency', 'benji'] = 0
+
+        self.dex_lusd.create_market(contract='currency', base_amount=1000, token_amount=1000)
+
+        self.dex_lusd.transfer_liquidity(contract='currency', amount=20, to='benji')
+
+        self.assertEqual(self.dex_lusd.liquidity_balance_of(contract='currency', account='benji'), 20)
+        self.assertEqual(self.dex_lusd.liquidity_balance_of(contract='currency', account='sys'), 80)
+
+    def test_transfer_liquidity_can_be_removed_by_other_party(self):
+        self.dex_lusd.lp_points['currency', 'sys', 'benji'] = 0
+        self.dex_lusd.lp_points['currency', 'sys', 'marvin'] = 0
+        self.dex_lusd.lp_points['currency', 'sys'] = 0
+        self.dex_lusd.lp_points['currency', 'benji'] = 0
+
+        self.dex_lusd.create_market(contract='currency', base_amount=1000, token_amount=1000)
+
+        self.dex_lusd.transfer_liquidity(contract='currency', amount=20, to='benji')
+
+        self.dex_lusd.remove_liquidity(signer='benji', contract='currency', amount=20)
+
+        self.assertEqual(self.currency.balances['benji'], 5200)
+        self.assertEqual(self.lusd.balances['benji'], 1700)
+
+    def test_remove_liquidity_fails_on_market_doesnt_exist(self):
+        with self.assertRaises(AssertionError):
+            self.dex_lusd.remove_liquidity(contract='currency', amount=50)
 
 
 if __name__ == '__main__':
