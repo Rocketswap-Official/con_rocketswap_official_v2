@@ -34,21 +34,11 @@ def create_market(contract: str, base_amount: float=0, token_amount:
     assert I.enforce_interface(token, token_interface
         ), 'Invalid token interface!'
 
-    # import foreign balances hashes
-    base_balance = ForeignHash(foreign_contract=base.get(), foreign_name='balances')
-    token_balance = ForeignHash(foreign_contract=contract, foreign_name='balances')
+    real_base_amount = balance_difference(base_token, contract=base.get(), 
+        amount=base_amount)
 
-    v2_base_balance_1 = base_balance[ctx.this]
-    base_token.transfer_from(amount=base_amount, to=ctx.this,
-        main_account=ctx.caller)
-    v2_base_balance_2 = base_balance[ctx.this]
-    real_base_amount = v2_base_balance_2 - v2_base_balance_1
-
-    v2_token_balance_1 = token_balance[ctx.this]
-    token.transfer_from(amount=token_amount, to=ctx.this, main_account=ctx.
-        caller)
-    v2_token_balance_2 = token_balance[ctx.this]
-    real_token_amount = v2_token_balance_2 - v2_token_balance_1
+    real_token_amount = balance_difference(token, contract=contract, 
+        amount=token_amount)
 
     prices[contract] = real_base_amount / real_token_amount
     pairs[contract] = True
@@ -72,23 +62,23 @@ def add_liquidity(contract: str, base_amount: float=0):
     assert I.enforce_interface(token, token_interface
         ), 'Invalid token interface!'
 
-    # import foreign balances hashes
-    base_balance = ForeignHash(foreign_contract=base.get(), foreign_name='balances')
-    token_balance = ForeignHash(foreign_contract=contract, foreign_name='balances')
-
     token_amount = base_amount / prices[contract]
 
-    v2_base_balance_1 = base_balance[ctx.this]
-    base_token.transfer_from(amount=base_amount, to=ctx.this,
-        main_account=ctx.caller)
-    v2_base_balance_2 = base_balance[ctx.this]
-    real_base_amount = v2_base_balance_2 - v2_base_balance_1
+    # v2_base_balance_1 = base_balance[ctx.this]
+    # base_token.transfer_from(amount=base_amount, to=ctx.this,
+    #     main_account=ctx.caller)
+    # v2_base_balance_2 = base_balance[ctx.this]
+    # real_base_amount = v2_base_balance_2 - v2_base_balance_1
 
-    v2_token_balance_1 = token_balance[ctx.this]
-    token.transfer_from(amount=token_amount, to=ctx.this, main_account=ctx.
-        caller)
-    v2_token_balance_2 = token_balance[ctx.this]
-    real_token_amount = v2_token_balance_2 - v2_token_balance_1
+    real_base_amount = balance_difference(base_token, contract=base.get(), amount=base_amount)
+
+    # v2_token_balance_1 = token_balance[ctx.this]
+    # token.transfer_from(amount=token_amount, to=ctx.this, main_account=ctx.
+    #     caller)
+    # v2_token_balance_2 = token_balance[ctx.this]
+    # real_token_amount = v2_token_balance_2 - v2_token_balance_1
+
+    real_token_amount = balance_difference(token, contract=contract, amount=token_amount)
 
     total_lp_points = lp_points[contract]
     base_reserve, token_reserve = reserves[contract]
@@ -168,18 +158,10 @@ def buy(contract: str, base_amount: float, minimum_received: float=0,
         ), 'Invalid token interface!'
     assert I.enforce_interface(token, token_interface
         ), 'Invalid token interface!'
-    
-    # import foreign balances hashes
-    base_balance = ForeignHash(foreign_contract=base.get(), foreign_name='balances')
 
     if contract == v1_state['TOKEN_CONTRACT']:
-        v2_base_balance_1 = base_balance[ctx.this]
-
-        base_token.transfer_from(amount=base_amount, to=ctx.this,
-            main_account=ctx.caller)
-
-        v2_base_balance_2 = base_balance[ctx.this]
-        real_base_amount = v2_base_balance_2 - v2_base_balance_1
+        real_base_amount = balance_difference(base_token, contract=base.get(), 
+            amount=base_amount)
 
         tokens_purchased = internal_buy(contract=v1_state['TOKEN_CONTRACT'
              ], base_amount=real_base_amount)
@@ -187,11 +169,11 @@ def buy(contract: str, base_amount: float, minimum_received: float=0,
         token.transfer(amount=tokens_purchased, to=ctx.caller)
         return tokens_purchased
 
-    v2_base_balance_1 = base_balance[ctx.this]
-    base_token.transfer_from(amount=base_amount, to=ctx.this,
-        main_account=ctx.caller)
-    v2_base_balance_2 = base_balance[ctx.this]
-    real_base_amount = v2_base_balance_2 - v2_base_balance_1
+    real_base_amount = balance_difference(base_token, contract=base.get(), 
+        amount=base_amount)
+
+    if isinstance(real_base_amount, int):
+        real_base_amount = decimal(f'{real_base_amount}')
 
     base_reserve, token_reserve = reserves[contract]
     k = base_reserve * token_reserve
@@ -262,28 +244,21 @@ def sell(contract: str, token_amount: float, minimum_received: float=0,
     assert I.enforce_interface(token, token_interface
         ), 'Invalid token interface!'
 
-    # import foreign balances hashes
-    token_balance = ForeignHash(foreign_contract=contract, foreign_name='balances')
-
     if contract == v1_state['TOKEN_CONTRACT']:
-        v2_token_balance_1 = token_balance[ctx.this]
-
-        token.transfer_from(amount=token_amount, to=ctx.this, main_account=
-            ctx.caller)
-        v2_token_balance_2 = token_balance[ctx.this]
-        real_token_amount = v2_token_balance_2 - v2_token_balance_1
+        real_token_amount = balance_difference(token, contract=contract, 
+            amount=token_amount)
         
         base_purchased = internal_sell(contract=v1_state['TOKEN_CONTRACT'], 
             token_amount=real_token_amount)
         base_token.transfer(amount=base_purchased, to=ctx.caller)
         return base_purchased
 
-    v2_token_balance_1 = token_balance[ctx.this]
-    token.transfer_from(amount=token_amount, to=ctx.this, main_account=
-        ctx.caller)
-    v2_token_balance_2 = token_balance[ctx.this]
-    real_token_amount = v2_token_balance_2 - v2_token_balance_1
-        
+    real_token_amount = balance_difference(token, contract=contract, 
+        amount=token_amount)
+
+    if isinstance(real_token_amount, int):
+        real_token_amount = decimal(f'{real_token_amount}')
+
     base_reserve, token_reserve = reserves[contract]
     k = base_reserve * token_reserve
     new_token_reserve = token_reserve + real_token_amount
@@ -354,6 +329,20 @@ def sync_reserves(contract: str):
     assert new_balance > 0, 'Cannot be a negative balance!'
     reserves[contract][1] = new_balance
     return new_balance
+
+def balance_difference(token, contract: str, amount: float):
+    token_balance = ForeignHash(foreign_contract=contract, foreign_name='balances')
+
+    v2_balance_1 = token_balance[ctx.this]
+
+    token.transfer_from(amount=amount, to=ctx.this, main_account=
+        ctx.caller)
+
+    v2_balance_2 = token_balance[ctx.this]
+
+    real_amount = v2_balance_2 - v2_balance_1
+
+    return real_amount
     
 def internal_buy(contract: str, base_amount: float):
     assert pairs[contract] is True, 'RSWP Market does not exist!'
@@ -397,3 +386,4 @@ def internal_sell(contract: str, token_amount: float):
     reserves[contract] = [new_base_reserve, new_token_reserve]
     prices[contract] = new_base_reserve / new_token_reserve
     return base_purchased
+
