@@ -341,6 +341,14 @@ class MyTestCase(unittest.TestCase):
         self.assertEqual(self.dex_lusd.prices['currency'], price_tau)
         self.assertEqual(self.dex_lusd.prices['con_marmite100_contract'], price_marmite)
 
+    def test_buying_with_token_fees_passes(self):
+        # Create LUSD-TAU market
+        self.dex_lusd.create_market(signer='sys', contract='currency', 
+            base_amount=14_000, token_amount=2_000_000)
+
+        # Buy TAU from LUSD-TAU pair
+        self.dex_lusd.buy(signer='benji', contract='currency', base_amount=300, token_fees=True)
+
     # SELLING
 
     def test_13_selling_to_different_markets_should_pass(self):
@@ -384,6 +392,14 @@ class MyTestCase(unittest.TestCase):
         self.assertEqual(self.dex_lusd.prices['currency'], price_tau)
         self.assertEqual(self.dex_lusd.prices['con_marmite100_contract'], price_marmite)
 
+    def test_selling_with_token_fees_passes(self):
+        # Create LUSD-TAU market
+        self.dex_lusd.create_market(signer='sys', contract='currency', 
+            base_amount=14_000, token_amount=2_000_000)
+
+        # Buy TAU from LUSD-TAU pair
+        self.dex_lusd.sell(signer='benji', contract='currency', token_amount=300, token_fees=True)
+
     # V1 STATE
 
     def test_changing_v1_states_should_reflect_in_v2(self):
@@ -398,7 +414,7 @@ class MyTestCase(unittest.TestCase):
         # Calculate purchased amount
         base_reserve, token_reserve = self.dex_lusd.reserves['con_marmite100_contract']
         k = base_reserve * token_reserve
-        new_token_reserve = token_reserve + 300
+        new_token_reserve = token_reserve + ContractingDecimal('300')
         new_base_reserve = k / new_token_reserve
         base_purchased = base_reserve - new_base_reserve
         fee_percent = v1_fee_perc * v1_discount_benji
