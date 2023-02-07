@@ -64,21 +64,11 @@ def add_liquidity(contract: str, base_amount: float=0):
 
     token_amount = base_amount / prices[contract]
 
-    # v2_base_balance_1 = base_balance[ctx.this]
-    # base_token.transfer_from(amount=base_amount, to=ctx.this,
-    #     main_account=ctx.caller)
-    # v2_base_balance_2 = base_balance[ctx.this]
-    # real_base_amount = v2_base_balance_2 - v2_base_balance_1
+    real_base_amount = balance_difference(base_token, contract=base.get(), 
+        amount=base_amount)
 
-    real_base_amount = balance_difference(base_token, contract=base.get(), amount=base_amount)
-
-    # v2_token_balance_1 = token_balance[ctx.this]
-    # token.transfer_from(amount=token_amount, to=ctx.this, main_account=ctx.
-    #     caller)
-    # v2_token_balance_2 = token_balance[ctx.this]
-    # real_token_amount = v2_token_balance_2 - v2_token_balance_1
-
-    real_token_amount = balance_difference(token, contract=contract, amount=token_amount)
+    real_token_amount = balance_difference(token, contract=contract, 
+        amount=token_amount)
 
     total_lp_points = lp_points[contract]
     base_reserve, token_reserve = reserves[contract]
@@ -172,9 +162,6 @@ def buy(contract: str, base_amount: float, minimum_received: float=0,
     real_base_amount = balance_difference(base_token, contract=base.get(), 
         amount=base_amount)
 
-    if isinstance(real_base_amount, int):
-        real_base_amount = decimal(f'{real_base_amount}')
-
     base_reserve, token_reserve = reserves[contract]
     k = base_reserve * token_reserve
     new_base_reserve = base_reserve + real_base_amount
@@ -255,9 +242,6 @@ def sell(contract: str, token_amount: float, minimum_received: float=0,
 
     real_token_amount = balance_difference(token, contract=contract, 
         amount=token_amount)
-
-    if isinstance(real_token_amount, int):
-        real_token_amount = decimal(f'{real_token_amount}')
 
     base_reserve, token_reserve = reserves[contract]
     k = base_reserve * token_reserve
