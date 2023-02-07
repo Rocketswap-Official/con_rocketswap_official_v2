@@ -316,11 +316,11 @@ class MyTestCase(unittest.TestCase):
         marvin_balance_marmite = self.marmite.balances['marvin']
 
         # Buy RSWP from TAU-RSWP pair
-        rswp_purchased = self.dex_currency.buy(signer='benji',contract='con_rswp_lst001', base_amount=2500)
+        rswp_purchased = self.dex_currency.buy(signer='benji',contract='con_rswp_lst001', base_amount=ContractingDecimal('2500'))
         # Buy TAU from LUSD-TAU pair
-        tau_purchased = self.dex_lusd.buy(signer='benji', contract='currency', base_amount=300)
+        tau_purchased = self.dex_lusd.buy(signer='benji', contract='currency', base_amount=ContractingDecimal('300'))
         # Buy MARMITE from LUSD-MARMITE pair
-        marmite_purchased = self.dex_lusd.buy(signer='marvin', contract='con_marmite100_contract', base_amount=100)
+        marmite_purchased = self.dex_lusd.buy(signer='marvin', contract='con_marmite100_contract', base_amount=ContractingDecimal('100'))
 
         reserves_rswp = self.dex_currency.reserves['con_rswp_lst001']
         reserves_tau = self.dex_lusd.reserves['currency']
@@ -347,7 +347,7 @@ class MyTestCase(unittest.TestCase):
             base_amount=14_000, token_amount=2_000_000)
 
         # Buy TAU from LUSD-TAU pair
-        self.dex_lusd.buy(signer='benji', contract='currency', base_amount=300, token_fees=True)
+        self.dex_lusd.buy(signer='benji', contract='currency', base_amount=ContractingDecimal('300'), token_fees=True)
 
     # SELLING
 
@@ -367,11 +367,11 @@ class MyTestCase(unittest.TestCase):
         marvin_balance_marmite = self.marmite.balances['marvin']
 
         # Sell RSWP to TAU-RSWP pair
-        tau_purchased = self.dex_currency.sell(signer='benji',contract='con_rswp_lst001', token_amount=2500)
+        tau_purchased = self.dex_currency.sell(signer='benji',contract='con_rswp_lst001', token_amount=ContractingDecimal('2500'))
         # Sell TAU to LUSD-TAU pair
-        self.dex_lusd.sell(signer='benji', contract='currency', token_amount=300)
+        self.dex_lusd.sell(signer='benji', contract='currency', token_amount=ContractingDecimal('300'))
         # Sell MARMITE to LUSD-MARMITE pair
-        self.dex_lusd.sell(signer='marvin', contract='con_marmite100_contract', token_amount=6000)
+        self.dex_lusd.sell(signer='marvin', contract='con_marmite100_contract', token_amount=ContractingDecimal('6000'))
 
         reserves_rswp = self.dex_currency.reserves['con_rswp_lst001']
         reserves_tau = self.dex_lusd.reserves['currency']
@@ -398,7 +398,7 @@ class MyTestCase(unittest.TestCase):
             base_amount=14_000, token_amount=2_000_000)
 
         # Buy TAU from LUSD-TAU pair
-        self.dex_lusd.sell(signer='benji', contract='currency', token_amount=300, token_fees=True)
+        self.dex_lusd.sell(signer='benji', contract='currency', token_amount=ContractingDecimal('300'), token_fees=True)
 
     # V1 STATE
 
@@ -422,7 +422,7 @@ class MyTestCase(unittest.TestCase):
         base_purchased = base_purchased - fee
         
         # Sell 300 MARMITE
-        purchased = self.dex_lusd.sell(signer='benji', contract='con_marmite100_contract', token_amount=300)
+        purchased = self.dex_lusd.sell(signer='benji', contract='con_marmite100_contract', token_amount=ContractingDecimal('300'))
 
         self.assertEqual(base_purchased, purchased)
 
@@ -443,7 +443,7 @@ class MyTestCase(unittest.TestCase):
         base_purchased_2 = base_purchased_2 - fee
 
         # Sell 300 MARMITE
-        purchased_2 = self.dex_lusd.sell(signer='benji', contract='con_marmite100_contract', token_amount=300)
+        purchased_2 = self.dex_lusd.sell(signer='benji', contract='con_marmite100_contract', token_amount=ContractingDecimal('300'))
     
         self.assertEqual(base_purchased_2, purchased_2)
 
@@ -467,7 +467,7 @@ class MyTestCase(unittest.TestCase):
         self.assertEqual(amount_defl_1, token_reserve)
 
         # Sell 500 DEFL
-        base_purchased = self.dex_lusd.sell(signer='sys', contract='con_deflation_token',token_amount=500)
+        base_purchased = self.dex_lusd.sell(signer='sys', contract='con_deflation_token',token_amount=ContractingDecimal('500'))
 
         dex_balance_defl_3 = self.defl.balances['con_dex_lusd']
         amount_defl_2 = dex_balance_defl_3 - dex_balance_defl_2
