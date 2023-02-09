@@ -141,6 +141,7 @@ def buy(contract: str, base_amount: float, minimum_received: float=0,
     token_fees: bool=False):
     assert pairs[contract] is True, 'Market does not exist!'
     assert base_amount > 0, 'Must provide base amount!'
+    # assert 5<1,"here"
     base_token = I.import_module(base.get())
     token = I.import_module(contract)
     amm_token = I.import_module(v1_state['TOKEN_CONTRACT'])
@@ -306,10 +307,11 @@ def create_rswp_market(base_amount: float=0, token_amount: float=0):
 
 @export
 def sync_reserves(contract: str):
-    assert state['SYNC_ENABLED'] is True, 'Sync is not enabled!'
-    token = I.import_module(contract)
-    token_balance = ForeignHash(foreign_contract=base.get(), foreign_name='balances')
-    new_balance = token_balance['ctx.this']
+    assert v1_state['SYNC_ENABLED'] is True, 'Sync is not enabled!'
+
+    token_balance = ForeignHash(foreign_contract=contract, foreign_name='balances')
+    new_balance = token_balance[ctx.this]
+    # assert 5 < 1, f'{new_balance}'
     assert new_balance > 0, 'Cannot be a negative balance!'
     reserves[contract][1] = new_balance
     return new_balance
