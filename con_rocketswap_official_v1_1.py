@@ -34,6 +34,7 @@ def seed(): #These are supposed to be constants, but they are changable
     #for testing
     discount['benji'] = 1
     discount['marvin'] = 1
+    discount['sys'] = 1
 
 @export
 def create_market(contract: str, currency_amount: float=0, token_amount: float=0):
