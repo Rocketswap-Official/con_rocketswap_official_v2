@@ -585,6 +585,93 @@ class MyTestCase(unittest.TestCase):
         with self.assertRaises(AssertionError):
             self.dex_lusd.remove_liquidity(contract='currency', amount=50)
 
+    # SYNC
+    
+    def test_sync_works(self):
+
+        self.dex_lusd.create_market(contract='currency', base_amount=100, token_amount=100)
+
+        self.currency.transfer(amount=100, to='con_dex_lusd')
+        
+        self.dex_v1.change_state(key='SYNC_ENABLED', new_value=True)
+        self.dex_lusd.sync_reserves(signer='benji', contract='currency')
+        
+    def test_sync_less_than_zero_fails(self):        
+        self.dex_lusd.create_market(contract='currency', base_amount=100, token_amount=100)
+
+        self.currency.transfer(signer='con_dex_lusd', amount=100, to='benji') #Might not work
+        self.dex_v1.change_state(key='SYNC_ENABLED', new_value=True)
+
+        with self.assertRaises(AssertionError):
+            self.dex_lusd.sync_reserves(signer='benji', contract='currency')
+                
+    def test_sync_not_enabled_fails(self):
+        with self.assertRaises(AssertionError):
+            self.dex_lusd.sync_reserves(signer="marvin", contract='currency')
+            
+    def test_sync_updates_reserves(self):
+        self.dex_lusd.create_market(contract='currency', base_amount=100, token_amount=100)
+
+        self.currency.transfer(amount=100, to='con_dex_lusd')
+        
+        self.dex_v1.change_state(key='SYNC_ENABLED', new_value=True)
+        self.dex_lusd.sync_reserves(signer='benji', contract='currency')
+        
+        tok_res = self.dex_lusd.reserves['currency'][1]
+        
+        self.assertEqual(tok_res, 200)
+                
+    def test_buy_works_after_sync(self):
+        self.dex_lusd.create_market(contract='currency', base_amount=100, token_amount=100)
+        self.dex_v1.change_state(key='SYNC_ENABLED', new_value=True)
+        self.dex_lusd.sync_reserves( signer='benji', contract='currency')
+        self.dex_lusd.buy(contract='currency', base_amount=ContractingDecimal('1'))
+        
+    def test_buy_works_after_sync_with_difference(self):
+        self.dex_lusd.create_market(contract='currency', base_amount=100, token_amount=100)
+        self.currency.transfer(amount=100, to='con_dex_lusd')
+        self.dex_v1.change_state(key='SYNC_ENABLED', new_value=True)
+        self.dex_lusd.sync_reserves( signer='benji', contract='currency')
+        self.dex_lusd.buy(contract='currency', base_amount=ContractingDecimal('1'))
+        
+    def test_sell_works_after_sync(self):
+        self.dex_lusd.create_market(contract='currency', base_amount=100, token_amount=100)
+        self.dex_v1.change_state(key='SYNC_ENABLED', new_value=True)
+        self.dex_lusd.sync_reserves( signer='benji', contract='currency')
+        self.dex_lusd.sell(contract='currency', token_amount=ContractingDecimal('1'))
+        
+    def test_sell_works_after_sync_with_difference(self):
+        self.dex_lusd.create_market(contract='currency', base_amount=100, token_amount=100)
+        self.currency.transfer(amount=100, to='con_dex_lusd')
+        self.dex_v1.change_state(key='SYNC_ENABLED', new_value=True)
+        self.dex_lusd.sync_reserves( signer='benji', contract='currency')
+        self.dex_lusd.sell(contract='currency', token_amount=ContractingDecimal('1'))
+
+    def test_sync_does_not_affect_other_pairs(self):
+
+        #self.lusd.balances['benji']) = 1500
+        #self.marmite.balances['benji']) = 2_000_000
+
+        self.dex_lusd.create_market(signer='benji', contract='currency', base_amount=100, token_amount=1000)
+        self.dex_lusd.create_market(signer='benji', contract='con_marmite100_contract', base_amount=100, token_amount=1000)
+    
+        self.currency.transfer(amount=100, to='con_dex_lusd')
+        
+        self.dex_v1.change_state(key='SYNC_ENABLED', new_value=True)
+        self.dex_lusd.sync_reserves( signer='benji', contract='currency')
+        
+        self.dex_lusd.buy(signer='benji', contract='currency', base_amount=ContractingDecimal('100'))
+        amount_bought = self.dex_lusd.sell(signer='benji', contract='currency', token_amount=ContractingDecimal('100'))
+        
+        self.dex_lusd.remove_liquidity(signer='benji', contract='con_marmite100_contract', amount=98)
+        
+        self.assertEqual(self.lusd.balances['benji'], 1500 + 98 + amount_bought - 100 - 200)
+        self.assertEqual(self.marmite.balances['benji'], 2_000_000 + 980 - 1000)
+
+    def test_buy_updates_price(self):
+        self.dex_lusd.create_market(contract='currency', base_amount=100, token_amount=1000)
+        self.assertEqual(self.dex_lusd.prices['currency'], 0.1)
+
 
 if __name__ == '__main__':
     unittest.main()
