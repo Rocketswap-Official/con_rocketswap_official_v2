@@ -31,12 +31,10 @@ def init(base_contract: str):
 def create_market(contract: str, base_amount: float = 0, token_amount: float = 0):
     assert contract != base.get(), "Cannot create a market for the base token!"
     assert pairs[contract] is None, "Market already exists!"
-    assert (
-        contract != v1_state["TOKEN_CONTRACT"]
-    ), "Only operator can create this market!"
-    assert (
-        base_amount > 0 and token_amount > 0
-    ), "Must provide base amount and token amount!"
+    assert contract != v1_state["TOKEN_CONTRACT"], "Only operator\
+        can create this market!"
+    assert base_amount > 0 and token_amount > 0, "Must provide\
+        base amount and token amount!"
 
     base_token = I.import_module(base.get())
     token = I.import_module(contract)
@@ -67,7 +65,7 @@ def liquidity_balance_of(contract: str, account: str):
 @export
 def add_liquidity(contract: str, base_amount: float = 0):
     assert pairs[contract] is True, "Market does not exist!"
-    assert base_amount > 0
+    assert base_amount > 0, "Must provide base amount!"
     base_token = I.import_module(base.get())
     token = I.import_module(contract)
     assert I.enforce_interface(base_token, token_interface), "Invalid token interface!"
@@ -116,9 +114,8 @@ def remove_liquidity(contract: str, amount: float = 0):
     assert lp_points[contract] > 1, "Not enough remaining liquidity!"
     new_base_reserve = base_reserve - base_amount
     new_token_reserve = token_reserve - token_amount
-    assert (
-        new_base_reserve > 0 and new_token_reserve > 0
-    ), "Not enough remaining liquidity!"
+    assert new_base_reserve > 0 and new_token_reserve > 0, "Not enough\
+        remaining liquidity!"
     reserves[contract] = [new_base_reserve, new_token_reserve]
     return base_amount, token_amount
 
@@ -126,32 +123,35 @@ def remove_liquidity(contract: str, amount: float = 0):
 @export
 def transfer_liquidity(contract: str, to: str, amount: float):
     assert amount > 0, "Must be a positive LP point amount!"
-    assert (
-        lp_points[contract, ctx.caller] >= amount
-    ), "Not enough LP points to transfer!"
+    assert lp_points[contract, ctx.caller] >= amount, "Not enough\
+        LP points to transfer!"
     lp_points[contract, ctx.caller] -= amount
     lp_points[contract, to] += amount
 
 
+# @export
+# def approve_liquidity(
+#     contract: str, to: str, amount: float, ctx_to_signer: bool = False
+# ):
+#     assert amount > 0, "Cannot send negative balances!"
+#     if ctx_to_signer is True:
+#         lp_points[contract, ctx.signer, to] += amount
+#     else:
+#         lp_points[contract, ctx.caller, to] += amount
+
 @export
-def approve_liquidity(
-    contract: str, to: str, amount: float, ctx_to_signer: bool = False
-):
-    assert amount > 0, "Cannot send negative balances!"
-    if ctx_to_signer is True:
-        lp_points[contract, ctx.signer, to] += amount
-    else:
-        lp_points[contract, ctx.caller, to] += amount
+def approve_liquidity(contract: str, to: str, amount: float):
+    assert amount > 0, 'Cannot send negative balances!'
+    lp_points[contract, ctx.caller, to] += amount
 
 
 @export
 def transfer_liquidity_from(contract: str, to: str, main_account: str, amount: float):
     assert amount > 0, "Cannot send negative balances!"
-    assert (
-        lp_points[contract, main_account, ctx.caller] >= amount
-    ), "Not enough coins approved to send! You have {} and are trying to spend {}".format(
-        lp_points[main_account, ctx.caller], amount
-    )
+    assert lp_points[contract, main_account, ctx.caller] >= amount, "Not enough \
+        coins approved to send! You have {} and are trying to spend {}".format(
+            lp_points[main_account, ctx.caller], amount
+        )
     assert lp_points[contract, main_account] >= amount, "Not enough coins to send!"
     lp_points[contract, main_account, ctx.caller] -= amount
     lp_points[contract, main_account] -= amount
@@ -243,10 +243,8 @@ def buy(
         amm_token.transfer(amount=burn_amount, to=v1_state["BURN_ADDRESS"])
 
     if minimum_received != None:
-        assert (
-            tokens_purchased >= minimum_received
-        ), "Only {} tokens can be purchased, \
-            which is less than your minimum, which is {} tokens.".format(
+        assert tokens_purchased >= minimum_received, "Only {} tokens can be purchased,\
+        which is less than your minimum, which is {} tokens.".format(
             tokens_purchased, minimum_received
         )
     assert tokens_purchased > 0, "Token reserve error!"
@@ -322,11 +320,10 @@ def sell(
         )
         amm_token.transfer(amount=token_received, to=v1_state["BURN_ADDRESS"])
     if minimum_received != None:
-        assert (
-            base_purchased >= minimum_received
-        ), "Only {} TAU can be purchased, which is less than your minimum, which is {} TAU.".format(
-            base_purchased, minimum_received
-        )
+        assert base_purchased >= minimum_received, "Only {} TAU can be purchased,\
+            which is less than your minimum, which is {} TAU.".format(
+                base_purchased, minimum_received
+            )
     assert base_purchased > 0, "Token reserve error!"
 
     base_token.transfer(amount=base_purchased, to=ctx.caller)
@@ -339,9 +336,8 @@ def sell(
 def create_rswp_market(base_amount: float = 0, token_amount: float = 0):
     assert ctx.caller == state["OWNER"], "Only owner can call this method!"
     assert pairs[v1_state["TOKEN_CONTRACT"]] is None, "Market already exists!"
-    assert (
-        base_amount > 0 and token_amount > 0
-    ), "Must provide base amount and token amount!"
+    assert base_amount > 0 and token_amount > 0, "Must provide\
+        base amount and token amount!"
 
     base_token = I.import_module(base.get())
     amm_token = I.import_module(v1_state["TOKEN_CONTRACT"])
@@ -362,7 +358,6 @@ def sync_reserves(contract: str):
 
     token_balance = ForeignHash(foreign_contract=contract, foreign_name="balances")
     new_balance = token_balance[ctx.this]
-    # assert 5 < 1, f'{new_balance}'
     assert new_balance > 0, "Cannot be a negative balance!"
     reserves[contract][1] = new_balance
     return new_balance
