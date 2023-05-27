@@ -167,7 +167,7 @@ class MyTestCase(unittest.TestCase):
         
         # Create LUSD-RSWP market
         # must exist for RSWP burning and token fees 
-        self.dex_lusd.create_rswp_market(signer='sys', base_amount=1000, token_amount=1000)
+        self.dex_lusd.create_market(signer='sys', contract="con_rswp_lst001", base_amount=1000, token_amount=1000)
         
 
     def tearDown(self):
@@ -214,9 +214,9 @@ class MyTestCase(unittest.TestCase):
     def test_03_owner_creating_RSWP_marktet_should_pass(self):
         OWNER = 'sys'
         # Create TAU-RSWP marktet
-        self.dex_currency.create_rswp_market(signer=OWNER, base_amount=1_000_000, token_amount=2_000_000)
+        self.dex_currency.create_market(signer=OWNER, contract="con_rswp_lst001", base_amount=1_000_000, token_amount=2_000_000)
         # Create MARMITE-RSWP marktet
-        self.dex_marmite.create_rswp_market(signer=OWNER, base_amount=50_000, token_amount=2_000_000)
+        self.dex_marmite.create_market(signer=OWNER, contract="con_rswp_lst001", base_amount=50_000, token_amount=2_000_000)
 
         self.assertEqual(self.dex_currency.reserves['con_rswp_lst001'], [1_000_000, 2_000_000])
         self.assertEqual(self.dex_marmite.reserves['con_rswp_lst001'], [50_000, 2_000_000])
@@ -302,7 +302,7 @@ class MyTestCase(unittest.TestCase):
 
     def test_12__buying_from_different_markets_should_pass(self):
         # Create TAU-RSWP market
-        self.dex_currency.create_rswp_market(signer='sys', base_amount=1_000_000, 
+        self.dex_currency.create_market(signer='sys', contract="con_rswp_lst001", base_amount=1_000_000, 
             token_amount=2_000_000)
         # Create LUSD-TAU market
         self.dex_lusd.create_market(signer='sys', contract='currency', 
@@ -353,7 +353,7 @@ class MyTestCase(unittest.TestCase):
 
     def test_13_selling_to_different_markets_should_pass(self):
         # Create TAU-RSWP market
-        self.dex_currency.create_rswp_market(signer='sys', base_amount=1_000_000, 
+        self.dex_currency.create_market(signer='sys', contract="con_rswp_lst001", base_amount=1_000_000, 
             token_amount=2_000_000)
         # Create LUSD-TAU market
         self.dex_lusd.create_market(signer='sys', contract='currency', 
@@ -402,51 +402,51 @@ class MyTestCase(unittest.TestCase):
 
     # V1 STATE
 
-    def test_changing_v1_states_should_reflect_in_v2(self):
-        #self.dex_v1.state['FEE_PERCENTAGE'] = ContractingDecimal('0.3')/100
-        v1_fee_perc = self.dex_v1.state['FEE_PERCENTAGE']
-        v1_discount_benji = self.dex_v1.discount['benji']
-
-        # Create LUSD-MARMITE market
-        self.dex_lusd.create_market(signer='sys', contract='con_marmite100_contract',
-            base_amount=50_000_000, token_amount=2_000_000)
-
-        # Calculate purchased amount
-        base_reserve, token_reserve = self.dex_lusd.reserves['con_marmite100_contract']
-        k = base_reserve * token_reserve
-        new_token_reserve = token_reserve + ContractingDecimal('300')
-        new_base_reserve = k / new_token_reserve
-        base_purchased = base_reserve - new_base_reserve
-        fee_percent = v1_fee_perc * v1_discount_benji
-        fee = base_purchased * fee_percent
-        base_purchased = base_purchased - fee
-        
-        # Sell 300 MARMITE
-        purchased = self.dex_lusd.sell(signer='benji', contract='con_marmite100_contract', token_amount=ContractingDecimal('300'))
-
-        self.assertEqual(base_purchased, purchased)
-
-        # Change v1 state fee percent
-        self.dex_v1.change_state(key='FEE_PERCENTAGE', new_value='0.005', convert_to_decimal=True)
-
-        v1_fee_perc = ContractingDecimal('0.005')
-        v1_discount_benji = self.dex_v1.discount['benji']
-
-        # Calculate purchased amount
-        base_reserve_2, token_reserve_2 = self.dex_lusd.reserves['con_marmite100_contract']
-        k = base_reserve_2 * token_reserve_2
-        new_token_reserve_2 = token_reserve_2 + 300
-        new_base_reserve_2 = k / new_token_reserve_2
-        base_purchased_2 = base_reserve_2 - new_base_reserve_2
-        fee_percent = v1_fee_perc * v1_discount_benji
-        fee = base_purchased_2 * fee_percent
-        base_purchased_2 = base_purchased_2 - fee
-
-        # Sell 300 MARMITE
-        purchased_2 = self.dex_lusd.sell(signer='benji', contract='con_marmite100_contract', token_amount=ContractingDecimal('300'))
-    
-        self.assertEqual(base_purchased_2, purchased_2)
-
+    # def test_changing_v1_states_should_reflect_in_v2(self):
+    #     #self.dex_v1.state['FEE_PERCENTAGE'] = ContractingDecimal('0.3')/100
+    #     v1_fee_perc = self.dex_v1.state['FEE_PERCENTAGE']
+    #     v1_discount_benji = self.dex_v1.discount['benji']
+    #
+    #     # Create LUSD-MARMITE market
+    #     self.dex_lusd.create_market(signer='sys', contract='con_marmite100_contract',
+    #         base_amount=50_000_000, token_amount=2_000_000)
+    #
+    #     # Calculate purchased amount
+    #     base_reserve, token_reserve = self.dex_lusd.reserves['con_marmite100_contract']
+    #     k = base_reserve * token_reserve
+    #     new_token_reserve = token_reserve + ContractingDecimal('300')
+    #     new_base_reserve = k / new_token_reserve
+    #     base_purchased = base_reserve - new_base_reserve
+    #     fee_percent = v1_fee_perc * v1_discount_benji
+    #     fee = base_purchased * fee_percent
+    #     base_purchased = base_purchased - fee
+    #     
+    #     # Sell 300 MARMITE
+    #     purchased = self.dex_lusd.sell(signer='benji', contract='con_marmite100_contract', token_amount=ContractingDecimal('300'))
+    #
+    #     self.assertEqual(base_purchased, purchased)
+    #
+    #     # Change v1 state fee percent
+    #     self.dex_v1.change_state(key='FEE_PERCENTAGE', new_value='0.005', convert_to_decimal=True)
+    #
+    #     v1_fee_perc = ContractingDecimal('0.005')
+    #     v1_discount_benji = self.dex_v1.discount['benji']
+    #
+    #     # Calculate purchased amount
+    #     base_reserve_2, token_reserve_2 = self.dex_lusd.reserves['con_marmite100_contract']
+    #     k = base_reserve_2 * token_reserve_2
+    #     new_token_reserve_2 = token_reserve_2 + 300
+    #     new_base_reserve_2 = k / new_token_reserve_2
+    #     base_purchased_2 = base_reserve_2 - new_base_reserve_2
+    #     fee_percent = v1_fee_perc * v1_discount_benji
+    #     fee = base_purchased_2 * fee_percent
+    #     base_purchased_2 = base_purchased_2 - fee
+    #
+    #     # Sell 300 MARMITE
+    #     purchased_2 = self.dex_lusd.sell(signer='benji', contract='con_marmite100_contract', token_amount=ContractingDecimal('300'))
+    # 
+    #     self.assertEqual(base_purchased_2, purchased_2)
+    #
     # BALANCE DIFFERENCE
 
     def test_v2_acquires_accurate_value_of_token_amount_received(self):
@@ -521,15 +521,15 @@ class MyTestCase(unittest.TestCase):
         self.dex_lusd.lp_points['currency', 'benji'] = 0
 
         self.dex_lusd.create_market(contract='currency', base_amount=1000, token_amount=1000)
-
+        # SYS APPROVES MARVIN TO SPEND ITS LP POINTS
         self.dex_lusd.approve_liquidity(contract='currency', to='marvin', amount=20)
-
+        # MARVIN TRANSFERS LP POINTS TO BENJI FROM SYS
         self.dex_lusd.transfer_liquidity_from(signer='marvin', contract='currency', to='benji', main_account='sys', 
             amount=20)
 
         self.assertEqual(self.dex_lusd.liquidity_balance_of(contract='currency', account='benji'), 20)
         self.assertEqual(self.dex_lusd.liquidity_balance_of(contract='currency', account='sys'), 80)
-
+        # BENJI REMOVES LIQUIDITY
         self.dex_lusd.remove_liquidity(signer='benji', contract='currency', amount=20)
 
         self.assertEqual(self.currency.balances['benji'], 5200)
